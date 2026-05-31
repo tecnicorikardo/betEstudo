@@ -24,6 +24,9 @@ ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_SCHEDULE_FILE = ROOT_DIR / "cronograma_ti_20_semanas_detalhado.md"
 DEFAULT_ENGLISH_SCHEDULE_FILE = ROOT_DIR / "Guia Completo_ Frases do Cotidiano Americano.md"
 DEFAULT_BIBLE_SCHEDULE_FILE = ROOT_DIR / "resumo_novo_testamento.md"
+DEFAULT_BIBLE_SCHEDULE_URL = (
+    "https://raw.githubusercontent.com/tecnicorikardo/betEstudo/main/resumo_novo_testamento.md"
+)
 LOCAL_TOKEN_FILE = ROOT_DIR / "token telegram.txt"
 SUBSCRIBERS_FILE = ROOT_DIR / "subscribers.json"
 
@@ -143,9 +146,46 @@ def english_schedule_path() -> Path:
 def bible_schedule_path() -> Path:
     configured = os.getenv("BIBLE_SCHEDULE_FILE", "").strip()
     if not configured:
-        return DEFAULT_BIBLE_SCHEDULE_FILE
-    path = Path(configured)
-    return path if path.is_absolute() else ROOT_DIR / path
+        path = DEFAULT_BIBLE_SCHEDULE_FILE
+    else:
+        path = Path(configured)
+        path = path if path.is_absolute() else ROOT_DIR / path
+
+    if path.exists():
+        return path
+
+    fallback = find_file_case_insensitive(ROOT_DIR, path.name)
+    if fallback:
+        return fallback
+
+    return path
+
+
+def find_file_case_insensitive(directory: Path, filename: str) -> Path | None:
+    expected = filename.lower()
+    for item in directory.glob("*.md"):
+        if item.name.lower() == expected:
+            return item
+    return None
+
+
+def ensure_bible_schedule_file(path: Path) -> Path:
+    if path.exists():
+        return path
+
+    url = os.getenv("BIBLE_SCHEDULE_URL", DEFAULT_BIBLE_SCHEDULE_URL).strip()
+    if not url:
+        return path
+
+    logging.warning("Cronograma biblico nao encontrado em %s. Tentando baixar de BIBLE_SCHEDULE_URL.", path)
+    response = requests.get(url, timeout=30)
+    if response.ok and response.text.strip():
+        path.write_text(response.text, encoding="utf-8")
+        logging.info("Cronograma biblico baixado para %s.", path)
+        return path
+
+    logging.error("Falha ao baixar cronograma biblico: HTTP %s.", response.status_code)
+    return path
 
 
 def parse_schedule(path: Path) -> list[Lesson]:
@@ -221,6 +261,11 @@ def parse_schedule(path: Path) -> list[Lesson]:
 
 
 def parse_bible_schedule(path: Path) -> list[Lesson]:
+    try:
+        path = ensure_bible_schedule_file(path)
+    except requests.RequestException as exc:
+        logging.error("Falha de rede ao buscar cronograma biblico: %s", exc.__class__.__name__)
+
     if not path.exists():
         raise ConfigError(f"Cronograma biblico nao encontrado: {path}")
 

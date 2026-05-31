@@ -30,6 +30,7 @@ ENGLISH_SEND_HOUR=19
 ENGLISH_SEND_MINUTE=0
 BIBLE_ENABLED=true
 BIBLE_SCHEDULE_FILE=resumo_novo_testamento.md
+BIBLE_SCHEDULE_URL=https://raw.githubusercontent.com/tecnicorikardo/betEstudo/main/resumo_novo_testamento.md
 BIBLE_START_DATE=2026-06-01
 BIBLE_SEND_HOUR=14
 BIBLE_SEND_MINUTE=0
