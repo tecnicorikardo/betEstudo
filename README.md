@@ -6,9 +6,12 @@ Worker em Python para enviar a materia do cronograma todos os dias uteis as 09:4
 
 - O bot le `cronograma_ti_20_semanas_detalhado.md`.
 - O bot tambem le `Guia Completo_ Frases do Cotidiano Americano.md`.
+- Quando configurado, o bot le um arquivo com resumos biblicos do Novo Testamento.
 - A data `SCHEDULE_START_DATE` define quando comeca a Semana 1, Segunda-feira.
 - De segunda a sexta, as 09:40 no fuso `America/Sao_Paulo`, ele envia a aula correspondente ao dia.
+- Todos os dias, as 14:00, ele envia um resumo biblico por capitulo.
 - De segunda a sexta, as 19:00, ele envia o conteudo de ingles do dia.
+- Se `GROQ_API_KEY` estiver configurada, a Groq organiza o resumo biblico em uma mensagem diaria para Telegram.
 - O envio usa `TELEGRAM_CHAT_IDS`. Tambem da para mandar `/start` para o bot e cadastrar o chat enquanto o worker estiver rodando.
 
 ## Variaveis no Railway
@@ -25,6 +28,13 @@ SEND_MINUTE=40
 ENGLISH_SCHEDULE_FILE=Guia Completo_ Frases do Cotidiano Americano.md
 ENGLISH_SEND_HOUR=19
 ENGLISH_SEND_MINUTE=0
+BIBLE_ENABLED=true
+BIBLE_SCHEDULE_FILE=resumo_novo_testamento.md
+BIBLE_START_DATE=2026-06-01
+BIBLE_SEND_HOUR=14
+BIBLE_SEND_MINUTE=0
+GROQ_API_KEY=sua_api_key_da_groq
+GROQ_MODEL=llama-3.1-8b-instant
 ENABLE_POLLING=false
 SEND_TEST_ON_START=false
 ```
@@ -43,6 +53,8 @@ Para usar esses comandos no Railway, configure `ENABLE_POLLING=true` temporariam
 
 Para testar o envio sem esperar o horario agendado, configure `SEND_TEST_ON_START=true`, faca redeploy e depois volte para `false`.
 
+O arquivo biblico deve estar em Markdown, com um capitulo por titulo. Exemplos aceitos: `## Mateus 1`, `## Mateus - Capitulo 1`, `## Resumo de Mateus capitulo 1`.
+
 ## Teste local
 
 Crie um `.env` baseado em `.env.example` e rode:
@@ -51,6 +63,7 @@ Crie um `.env` baseado em `.env.example` e rode:
 pip install -r requirements.txt
 python bot.py --dry-run 2026-06-01
 python bot.py --english-dry-run 2026-06-01
+python bot.py --bible-dry-run 2026-06-01
 python bot.py
 ```
 

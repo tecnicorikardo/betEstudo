@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_SCHEDULE_FILE = ROOT_DIR / "cronograma_ti_20_semanas_detalhado.md"
 DEFAULT_ENGLISH_SCHEDULE_FILE = ROOT_DIR / "Guia Completo_ Frases do Cotidiano Americano.md"
+DEFAULT_BIBLE_SCHEDULE_FILE = ROOT_DIR / "resumo_novo_testamento.md"
 LOCAL_TOKEN_FILE = ROOT_DIR / "token telegram.txt"
 SUBSCRIBERS_FILE = ROOT_DIR / "subscribers.json"
 
@@ -31,6 +32,10 @@ MODULE_RE = re.compile(r"^##\s+(?!#)(.+?)\s*$")
 WEEK_RE = re.compile(r"^###\s+Semana\s+(\d+)\b\s*(?:[-\u2013]\s*)?(.*)$")
 LESSON_RE = re.compile(r"^####\s+([^:]+):\s*(.+?)\s*$")
 WEEKDAY_SECTION_RE = re.compile(r"^##\s+([^:]+):\s*(.+?)\s*$")
+BIBLE_CHAPTER_RE = re.compile(
+    r"^(?:resumo\s+(?:de\s+)?)?(?P<title>[1-3]?\s*[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*\s*(?:[-\u2013:]\s*)?(?:cap[ií]tulo\s*)?\d+)\b.*$",
+    re.IGNORECASE,
+)
 
 WEEKDAY_NAMES = {
     0: "Segunda-feira",
@@ -70,6 +75,10 @@ class ConfigError(RuntimeError):
 
 
 class TelegramApiError(RuntimeError):
+    pass
+
+
+class GroqApiError(RuntimeError):
     pass
 
 
@@ -127,6 +136,14 @@ def english_schedule_path() -> Path:
     configured = os.getenv("ENGLISH_SCHEDULE_FILE", "").strip()
     if not configured:
         return DEFAULT_ENGLISH_SCHEDULE_FILE
+    path = Path(configured)
+    return path if path.is_absolute() else ROOT_DIR / path
+
+
+def bible_schedule_path() -> Path:
+    configured = os.getenv("BIBLE_SCHEDULE_FILE", "").strip()
+    if not configured:
+        return DEFAULT_BIBLE_SCHEDULE_FILE
     path = Path(configured)
     return path if path.is_absolute() else ROOT_DIR / path
 
@@ -200,6 +217,57 @@ def parse_schedule(path: Path) -> list[Lesson]:
     flush_lesson()
 
     lessons.sort(key=lambda item: (item.week, item.weekday))
+    return lessons
+
+
+def parse_bible_schedule(path: Path) -> list[Lesson]:
+    if not path.exists():
+        raise ConfigError(f"Cronograma biblico nao encontrado: {path}")
+
+    lessons: list[Lesson] = []
+    document_title = path.stem
+    current_title = ""
+    current_body: list[str] = []
+
+    def flush_chapter() -> None:
+        nonlocal current_title, current_body
+        if not current_title:
+            return
+
+        chapter_number = len(lessons) + 1
+        lessons.append(
+            Lesson(
+                module=document_title,
+                week=(chapter_number - 1) // 7 + 1,
+                week_title="Novo Testamento",
+                weekday=(chapter_number - 1) % 7,
+                weekday_name="Diario",
+                title=current_title,
+                body="\n".join(current_body).strip(),
+            )
+        )
+        current_title = ""
+        current_body = []
+
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        title_match = TITLE_RE.match(raw_line)
+        if title_match and not lessons and not current_title:
+            document_title = title_match.group(1)
+            continue
+
+        heading_match = re.match(r"^#{1,6}\s+(.+?)\s*$", raw_line)
+        if heading_match:
+            heading = heading_match.group(1).strip()
+            chapter_match = BIBLE_CHAPTER_RE.match(heading)
+            if chapter_match:
+                flush_chapter()
+                current_title = chapter_match.group("title").strip()
+                continue
+
+        if current_title:
+            current_body.append(raw_line)
+
+    flush_chapter()
     return lessons
 
 
@@ -278,6 +346,17 @@ def weekday_lesson_for_date(lessons: dict[int, Lesson], target_date: date) -> Le
     return lessons.get(target_date.weekday())
 
 
+def sequential_lesson_for_date(lessons: list[Lesson], start_date: date, target_date: date) -> Lesson | None:
+    if target_date < start_date or not lessons:
+        return None
+
+    lesson_index = (target_date - start_date).days
+    if lesson_index >= len(lessons):
+        return None
+
+    return lessons[lesson_index]
+
+
 def format_lesson(lesson: Lesson, target_date: date) -> str:
     header = "\n".join(
         [
@@ -296,6 +375,25 @@ def format_lesson(lesson: Lesson, target_date: date) -> str:
         return header
 
     return f"{header}\n{lesson.body}"
+
+
+def format_bible_lesson(lesson: Lesson, target_date: date, body: str | None = None) -> str:
+    content = body if body is not None else lesson.body
+    header = "\n".join(
+        [
+            "Resumo biblico de hoje",
+            f"Data: {target_date:%d/%m/%Y}",
+            f"Serie: {lesson.module}",
+            f"Capitulo: {lesson.title}",
+            "",
+            "Conteudo:",
+        ]
+    )
+
+    if not content:
+        return header
+
+    return f"{header}\n{content}"
 
 
 def format_english_lesson(lesson: Lesson, target_date: date) -> str:
@@ -359,6 +457,60 @@ def raise_for_telegram(response: requests.Response, action: str) -> None:
         pass
 
     raise TelegramApiError(f"{action} falhou: HTTP {response.status_code} - {description}")
+
+
+def groq_api_key() -> str:
+    return os.getenv("GROQ_API_KEY", "").strip()
+
+
+def enhance_bible_summary_with_groq(lesson: Lesson) -> str:
+    api_key = groq_api_key()
+    if not api_key:
+        return lesson.body
+
+    prompt = (
+        "Transforme o resumo abaixo em uma mensagem diaria para Telegram, em portugues do Brasil. "
+        "Seja claro, respeitoso e fiel ao conteudo biblico. Organize em: 1) resumo do capitulo, "
+        "2) mensagem principal, 3) aplicacao pratica para hoje. Nao invente versiculos nem fatos "
+        "que nao estejam no texto. Mantenha entre 120 e 220 palavras.\n\n"
+        f"Capitulo: {lesson.title}\n\n"
+        f"Resumo base:\n{lesson.body}"
+    )
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Voce e um assistente de estudos biblicos. Responda com linguagem simples, "
+                        "devocional leve e foco em compreensao do Novo Testamento."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": float(os.getenv("GROQ_TEMPERATURE", "0.4")),
+            "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", "700")),
+        },
+        timeout=60,
+    )
+
+    if not response.ok:
+        description = response.text
+        try:
+            payload = response.json()
+            description = payload.get("error", {}).get("message", description)
+        except ValueError:
+            pass
+        raise GroqApiError(f"Groq falhou: HTTP {response.status_code} - {description}")
+
+    payload = response.json()
+    return payload["choices"][0]["message"]["content"].strip()
 
 
 def send_telegram_message(token: str, chat_id: str, text: str) -> None:
@@ -457,6 +609,41 @@ def send_weekday_lesson_to_subscribers(
             time.sleep(0.4)
         else:
             logging.info("Aula de ingles enviada para chat_id=%s.", chat_id)
+
+
+def send_bible_lesson_to_subscribers(
+    token: str,
+    lessons: list[Lesson],
+    start_date: date,
+    target_date: date,
+) -> None:
+    lesson = sequential_lesson_for_date(lessons, start_date, target_date)
+    if not lesson:
+        logging.info("Nenhum resumo biblico programado para %s.", target_date.isoformat())
+        return
+
+    subscribers = load_subscribers()
+    if not subscribers:
+        logging.warning("Nenhum TELEGRAM_CHAT_IDS configurado para envio biblico.")
+        return
+
+    try:
+        body = enhance_bible_summary_with_groq(lesson)
+    except (requests.RequestException, GroqApiError, KeyError, IndexError) as exc:
+        logging.error("Falha ao usar Groq para %s: %s. Enviando resumo original.", lesson.title, exc)
+        body = lesson.body
+
+    chunks = split_message(format_bible_lesson(lesson, target_date, body))
+    for chat_id in subscribers:
+        for chunk in chunks:
+            try:
+                send_telegram_message(token, chat_id, chunk)
+            except (requests.RequestException, TelegramApiError) as exc:
+                logging.error("Falha ao enviar biblico para chat_id=%s: %s", chat_id, exc)
+                break
+            time.sleep(0.4)
+        else:
+            logging.info("Resumo biblico enviado para chat_id=%s.", chat_id)
 
 
 def reply(token: str, chat_id: str, text: str) -> None:
@@ -580,6 +767,31 @@ def add_english_scheduler_job(
     )
 
 
+def add_bible_scheduler_job(
+    scheduler: BlockingScheduler,
+    token: str,
+    lessons: list[Lesson],
+    start_date: date,
+    timezone: ZoneInfo,
+    hour: int,
+    minute: int,
+) -> None:
+    trigger = CronTrigger(hour=hour, minute=minute, timezone=timezone)
+    scheduler.add_job(
+        lambda: send_bible_lesson_to_subscribers(
+            token=token,
+            lessons=lessons,
+            start_date=start_date,
+            target_date=datetime.now(timezone).date(),
+        ),
+        trigger=trigger,
+        id="daily_bible_lesson",
+        replace_existing=True,
+        misfire_grace_time=900,
+        coalesce=True,
+    )
+
+
 def dry_run(target_date: date) -> int:
     load_dotenv()
     lessons = parse_schedule(schedule_path())
@@ -605,6 +817,19 @@ def english_dry_run(target_date: date) -> int:
     return 0
 
 
+def bible_dry_run(target_date: date) -> int:
+    load_dotenv()
+    lessons = parse_bible_schedule(bible_schedule_path())
+    start_date = parse_date(os.getenv("BIBLE_START_DATE", os.getenv("SCHEDULE_START_DATE", "")).strip())
+    lesson = sequential_lesson_for_date(lessons, start_date, target_date)
+    if not lesson:
+        print(f"Nenhum resumo biblico para {target_date.isoformat()}.")
+        return 0
+
+    print(format_bible_lesson(lesson, target_date, lesson.body))
+    return 0
+
+
 def main() -> int:
     load_dotenv()
     logging.basicConfig(
@@ -619,17 +844,27 @@ def main() -> int:
     minute = int(os.getenv("SEND_MINUTE", "40"))
     english_hour = int(os.getenv("ENGLISH_SEND_HOUR", "19"))
     english_minute = int(os.getenv("ENGLISH_SEND_MINUTE", "0"))
+    bible_hour = int(os.getenv("BIBLE_SEND_HOUR", "14"))
+    bible_minute = int(os.getenv("BIBLE_SEND_MINUTE", "0"))
     enable_polling = parse_bool(os.getenv("ENABLE_POLLING", "false"))
     send_test_on_start = parse_bool(os.getenv("SEND_TEST_ON_START", "false"))
     token = read_token()
     start_date = read_start_date()
     lessons = parse_schedule(schedule_path())
     english_lessons = parse_weekday_schedule(english_schedule_path())
+    bible_path = bible_schedule_path()
+    bible_enabled = parse_bool(os.getenv("BIBLE_ENABLED", ""), default=bible_path.exists())
+    bible_lessons: list[Lesson] = []
+    bible_start_date = parse_date(os.getenv("BIBLE_START_DATE", start_date.isoformat()).strip())
 
     if not lessons:
         raise ConfigError("Nenhuma aula encontrada no cronograma.")
     if len(english_lessons) < 5:
         raise ConfigError("O cronograma de ingles precisa ter conteudo de segunda a sexta.")
+    if bible_enabled:
+        bible_lessons = parse_bible_schedule(bible_path)
+        if not bible_lessons:
+            raise ConfigError("O cronograma biblico precisa ter pelo menos um capitulo.")
 
     if enable_polling:
         polling_thread = threading.Thread(
@@ -660,6 +895,16 @@ def main() -> int:
 
     scheduler = build_scheduler(token, lessons, start_date, timezone, hour, minute)
     add_english_scheduler_job(scheduler, token, english_lessons, timezone, english_hour, english_minute)
+    if bible_enabled:
+        add_bible_scheduler_job(
+            scheduler,
+            token,
+            bible_lessons,
+            bible_start_date,
+            timezone,
+            bible_hour,
+            bible_minute,
+        )
     logging.info(
         "Bot iniciado com %s aulas. Disparo: seg-sex %02d:%02d (%s).",
         len(lessons),
@@ -674,6 +919,16 @@ def main() -> int:
         english_minute,
         timezone.key,
     )
+    if bible_enabled:
+        logging.info(
+            "Cronograma biblico iniciado com %s capitulos. Disparo: diario %02d:%02d (%s).",
+            len(bible_lessons),
+            bible_hour,
+            bible_minute,
+            timezone.key,
+        )
+    else:
+        logging.info("Cronograma biblico desativado. Configure BIBLE_ENABLED=true quando o arquivo estiver pronto.")
     scheduler.start()
     return 0
 
@@ -682,9 +937,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Bot Telegram do cronograma de estudos.")
     parser.add_argument("--dry-run", metavar="YYYY-MM-DD", help="Mostra a aula calculada para a data.")
     parser.add_argument("--english-dry-run", metavar="YYYY-MM-DD", help="Mostra a aula de ingles para a data.")
+    parser.add_argument("--bible-dry-run", metavar="YYYY-MM-DD", help="Mostra o resumo biblico para a data.")
     args = parser.parse_args()
 
     try:
+        if args.bible_dry_run:
+            raise SystemExit(bible_dry_run(parse_date(args.bible_dry_run)))
         if args.english_dry_run:
             raise SystemExit(english_dry_run(parse_date(args.english_dry_run)))
         if args.dry_run:
