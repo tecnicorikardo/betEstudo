@@ -21,6 +21,7 @@ TIMEZONE=America/Sao_Paulo
 SEND_HOUR=9
 SEND_MINUTE=40
 ENABLE_POLLING=false
+SEND_TEST_ON_START=false
 ```
 
 O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`.
@@ -34,6 +35,8 @@ O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`
 - `/cronograma`: mostra a quantidade de aulas carregadas e a data inicial.
 
 Para usar esses comandos no Railway, configure `ENABLE_POLLING=true` temporariamente. Para o envio diario, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.
+
+Para testar o envio sem esperar o horario agendado, configure `SEND_TEST_ON_START=true`, faca redeploy e depois volte para `false`.
 
 ## Teste local
 

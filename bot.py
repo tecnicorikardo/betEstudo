@@ -449,12 +449,15 @@ def main() -> int:
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(message)s",
+        stream=sys.stdout,
+        force=True,
     )
 
     timezone = ZoneInfo(os.getenv("TIMEZONE", "America/Sao_Paulo"))
     hour = int(os.getenv("SEND_HOUR", "9"))
     minute = int(os.getenv("SEND_MINUTE", "40"))
     enable_polling = parse_bool(os.getenv("ENABLE_POLLING", "false"))
+    send_test_on_start = parse_bool(os.getenv("SEND_TEST_ON_START", "false"))
     token = read_token()
     start_date = read_start_date()
     lessons = parse_schedule(schedule_path())
@@ -471,6 +474,19 @@ def main() -> int:
         polling_thread.start()
     else:
         logging.info("Polling do Telegram desativado. Use ENABLE_POLLING=true para comandos como /id.")
+
+    if send_test_on_start:
+        subscribers = load_subscribers()
+        if subscribers:
+            test_message = (
+                "Teste do BetEstudo: bot online e pronto para enviar o cronograma diario "
+                f"as {hour:02d}:{minute:02d}."
+            )
+            for chat_id in subscribers:
+                send_telegram_message(token, chat_id, test_message)
+                logging.info("Mensagem de teste enviada para chat_id=%s.", chat_id)
+        else:
+            logging.warning("SEND_TEST_ON_START ativo, mas nenhum TELEGRAM_CHAT_IDS foi configurado.")
 
     scheduler = build_scheduler(token, lessons, start_date, timezone, hour, minute)
     logging.info(
