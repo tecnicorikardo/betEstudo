@@ -225,15 +225,24 @@ def parse_bible_schedule(path: Path) -> list[Lesson]:
         raise ConfigError(f"Cronograma biblico nao encontrado: {path}")
 
     lessons: list[Lesson] = []
-    document_title = path.stem
+    document_title = "Resumo do Novo Testamento"
+    current_book = ""
     current_title = ""
     current_body: list[str] = []
+    seen_titles: set[str] = set()
 
-    def flush_chapter() -> None:
-        nonlocal current_title, current_body
-        if not current_title:
+    def clean_cell(value: str) -> str:
+        cleaned = value.strip()
+        cleaned = re.sub(r"^\*\*(.+?)\*\*$", r"\1", cleaned)
+        return cleaned.strip()
+
+    def add_chapter(title: str, body: str) -> None:
+        normalized_title = normalize_text(title)
+        if normalized_title in seen_titles:
+            logging.warning("Capitulo biblico duplicado ignorado: %s", title)
             return
 
+        seen_titles.add(normalized_title)
         chapter_number = len(lessons) + 1
         lessons.append(
             Lesson(
@@ -242,17 +251,25 @@ def parse_bible_schedule(path: Path) -> list[Lesson]:
                 week_title="Novo Testamento",
                 weekday=(chapter_number - 1) % 7,
                 weekday_name="Diario",
-                title=current_title,
-                body="\n".join(current_body).strip(),
+                title=title,
+                body=body.strip(),
             )
         )
+
+    def flush_chapter() -> None:
+        nonlocal current_title, current_body
+        if not current_title:
+            return
+
+        add_chapter(current_title, "\n".join(current_body))
         current_title = ""
         current_body = []
 
     for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
         title_match = TITLE_RE.match(raw_line)
-        if title_match and not lessons and not current_title:
-            document_title = title_match.group(1)
+        if title_match:
+            flush_chapter()
+            current_book = title_match.group(1).strip()
             continue
 
         heading_match = re.match(r"^#{1,6}\s+(.+?)\s*$", raw_line)
@@ -262,6 +279,27 @@ def parse_bible_schedule(path: Path) -> list[Lesson]:
             if chapter_match:
                 flush_chapter()
                 current_title = chapter_match.group("title").strip()
+                continue
+
+        if raw_line.strip().startswith("|") and current_book:
+            cells = [clean_cell(cell) for cell in raw_line.strip().strip("|").split("|")]
+            if not cells or all(re.fullmatch(r":?-+:?", cell) for cell in cells):
+                continue
+
+            first_cell = normalize_text(cells[0])
+            if first_cell in {"capitulo", "tema principal"}:
+                continue
+
+            if len(cells) >= 3 and re.fullmatch(r"\d+", cells[0]):
+                title = f"{current_book} {cells[0]}"
+                body = f"Tema principal: {cells[1]}\n\nResumo: {' | '.join(cells[2:])}"
+                add_chapter(title, body)
+                continue
+
+            if len(cells) >= 2 and cells[0] and cells[1]:
+                title = f"{current_book} 1"
+                body = f"Tema principal: {cells[0]}\n\nResumo: {' | '.join(cells[1:])}"
+                add_chapter(title, body)
                 continue
 
         if current_title:
