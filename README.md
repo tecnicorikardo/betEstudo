@@ -48,9 +48,12 @@ O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`
 - `/id`: mostra o `chat_id` do Telegram.
 - `/hoje`: envia a aula calculada para hoje.
 - `/amanha`: envia a aula calculada para amanha.
+- `/ingles`: envia o conteudo de ingles de hoje.
+- `/biblia`: envia o resumo biblico de hoje, usando Groq quando configurada.
+- `/ia sua pergunta`: responde usando a Groq.
 - `/cronograma`: mostra a quantidade de aulas carregadas e a data inicial.
 
-Para usar esses comandos no Railway, configure `ENABLE_POLLING=true` temporariamente. Para o envio diario, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.
+Para usar esses comandos no Railway, configure `ENABLE_POLLING=true`. Para apenas envio diario sem respostas no chat, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.
 
 Para testar o envio sem esperar o horario agendado, configure `SEND_TEST_ON_START=true`, faca redeploy e depois volte para `false`.
 

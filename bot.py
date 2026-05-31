@@ -596,6 +596,49 @@ def enhance_bible_summary_with_groq(lesson: Lesson) -> str:
     return payload["choices"][0]["message"]["content"].strip()
 
 
+def ask_groq(question: str) -> str:
+    api_key = groq_api_key()
+    if not api_key:
+        raise GroqApiError("GROQ_API_KEY nao configurada.")
+
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Voce e o assistente do bot BetEstudo. Responda em portugues do Brasil, "
+                        "com clareza, objetividade e tom respeitoso. Ajude em estudos de TI, ingles "
+                        "e resumos biblicos quando solicitado."
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            "temperature": float(os.getenv("GROQ_TEMPERATURE", "0.4")),
+            "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", "700")),
+        },
+        timeout=60,
+    )
+
+    if not response.ok:
+        description = response.text
+        try:
+            payload = response.json()
+            description = payload.get("error", {}).get("message", description)
+        except ValueError:
+            pass
+        raise GroqApiError(f"Groq falhou: HTTP {response.status_code} - {description}")
+
+    payload = response.json()
+    return payload["choices"][0]["message"]["content"].strip()
+
+
 def send_telegram_message(token: str, chat_id: str, text: str) -> None:
     response = requests.post(
         telegram_api_url(token, "sendMessage"),
@@ -736,7 +779,15 @@ def reply(token: str, chat_id: str, text: str) -> None:
         logging.error("Falha ao responder chat_id=%s: %s", chat_id, exc)
 
 
-def polling_loop(token: str, lessons: list[Lesson], start_date: date, timezone: ZoneInfo) -> None:
+def polling_loop(
+    token: str,
+    lessons: list[Lesson],
+    start_date: date,
+    english_lessons: dict[int, Lesson],
+    bible_lessons: list[Lesson],
+    bible_start_date: date,
+    timezone: ZoneInfo,
+) -> None:
     offset: int | None = None
     logging.info("Polling do Telegram iniciado.")
 
@@ -763,7 +814,8 @@ def polling_loop(token: str, lessons: list[Lesson], start_date: date, timezone: 
             message = update.get("message") or update.get("edited_message") or {}
             chat = message.get("chat") or {}
             chat_id = str(chat.get("id", "")).strip()
-            text = str(message.get("text", "")).strip().lower()
+            text_raw = str(message.get("text", "")).strip()
+            text = text_raw.lower()
             if not chat_id or not text:
                 continue
 
@@ -772,7 +824,16 @@ def polling_loop(token: str, lessons: list[Lesson], start_date: date, timezone: 
                 reply(
                     token,
                     chat_id,
-                    "Cadastro feito. Este chat recebera a materia diaria de segunda a sexta, as 09:40.",
+                    (
+                        "Cadastro feito. Este chat recebera os cronogramas diarios.\n\n"
+                        "Comandos: /id, /hoje, /ingles, /biblia, /ia sua pergunta, /cronograma."
+                    ),
+                )
+            elif text.startswith("/ajuda") or text.startswith("/help"):
+                reply(
+                    token,
+                    chat_id,
+                    "Comandos: /id, /hoje, /amanha, /ingles, /biblia, /ia sua pergunta, /cronograma.",
                 )
             elif text.startswith("/id"):
                 reply(token, chat_id, f"Seu chat_id e: {chat_id}")
@@ -792,6 +853,44 @@ def polling_loop(token: str, lessons: list[Lesson], start_date: date, timezone: 
                         reply(token, chat_id, chunk)
                 else:
                     reply(token, chat_id, "Nao ha aula programada para amanha.")
+            elif text.startswith("/ingles"):
+                today = datetime.now(timezone).date()
+                lesson = weekday_lesson_for_date(english_lessons, today)
+                if lesson:
+                    for chunk in split_message(format_english_lesson(lesson, today)):
+                        reply(token, chat_id, chunk)
+                else:
+                    reply(token, chat_id, "Nao ha aula de ingles programada para hoje.")
+            elif text.startswith("/biblia"):
+                today = datetime.now(timezone).date()
+                lesson = sequential_lesson_for_date(bible_lessons, bible_start_date, today)
+                if not lesson:
+                    reply(token, chat_id, "Nao ha resumo biblico programado para hoje.")
+                    continue
+
+                try:
+                    body = enhance_bible_summary_with_groq(lesson)
+                except (requests.RequestException, GroqApiError, KeyError, IndexError) as exc:
+                    logging.error("Falha ao usar Groq no comando /biblia: %s", exc)
+                    body = lesson.body
+
+                for chunk in split_message(format_bible_lesson(lesson, today, body)):
+                    reply(token, chat_id, chunk)
+            elif text.startswith("/ia"):
+                question = text_raw[3:].strip()
+                if not question:
+                    reply(token, chat_id, "Use assim: /ia escreva sua pergunta aqui.")
+                    continue
+
+                try:
+                    answer = ask_groq(question)
+                except (requests.RequestException, GroqApiError, KeyError, IndexError) as exc:
+                    logging.error("Falha ao responder /ia: %s", exc)
+                    reply(token, chat_id, "Nao consegui responder com a IA agora. Verifique a GROQ_API_KEY.")
+                    continue
+
+                for chunk in split_message(answer):
+                    reply(token, chat_id, chunk)
             elif text.startswith("/cronograma"):
                 reply(
                     token,
@@ -952,7 +1051,7 @@ def main() -> int:
     if enable_polling:
         polling_thread = threading.Thread(
             target=polling_loop,
-            args=(token, lessons, start_date, timezone),
+            args=(token, lessons, start_date, english_lessons, bible_lessons, bible_start_date, timezone),
             daemon=True,
         )
         polling_thread.start()
