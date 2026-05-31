@@ -328,9 +328,14 @@ def send_lesson_to_subscribers(token: str, lessons: list[Lesson], start_date: da
 
     for chat_id in subscribers:
         for chunk in chunks:
-            send_telegram_message(token, chat_id, chunk)
+            try:
+                send_telegram_message(token, chat_id, chunk)
+            except (requests.RequestException, TelegramApiError) as exc:
+                logging.error("Falha ao enviar aula para chat_id=%s: %s", chat_id, exc)
+                break
             time.sleep(0.4)
-        logging.info("Aula enviada para chat_id=%s.", chat_id)
+        else:
+            logging.info("Aula enviada para chat_id=%s.", chat_id)
 
 
 def reply(token: str, chat_id: str, text: str) -> None:
@@ -483,7 +488,11 @@ def main() -> int:
                 f"as {hour:02d}:{minute:02d}."
             )
             for chat_id in subscribers:
-                send_telegram_message(token, chat_id, test_message)
+                try:
+                    send_telegram_message(token, chat_id, test_message)
+                except (requests.RequestException, TelegramApiError) as exc:
+                    logging.error("Falha ao enviar teste para chat_id=%s: %s", chat_id, exc)
+                    continue
                 logging.info("Mensagem de teste enviada para chat_id=%s.", chat_id)
         else:
             logging.warning("SEND_TEST_ON_START ativo, mas nenhum TELEGRAM_CHAT_IDS foi configurado.")
