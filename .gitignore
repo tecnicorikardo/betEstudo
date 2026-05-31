@@ -1,0 +1,6 @@
+.env
+token telegram.txt
+subscribers.json
+__pycache__/
+*.py[cod]
+.pytest_cache/
