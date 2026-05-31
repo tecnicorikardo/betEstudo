@@ -5,8 +5,10 @@ Worker em Python para enviar a materia do cronograma todos os dias uteis as 09:4
 ## Como funciona
 
 - O bot le `cronograma_ti_20_semanas_detalhado.md`.
+- O bot tambem le `Guia Completo_ Frases do Cotidiano Americano.md`.
 - A data `SCHEDULE_START_DATE` define quando comeca a Semana 1, Segunda-feira.
 - De segunda a sexta, as 09:40 no fuso `America/Sao_Paulo`, ele envia a aula correspondente ao dia.
+- De segunda a sexta, as 19:00, ele envia o conteudo de ingles do dia.
 - O envio usa `TELEGRAM_CHAT_IDS`. Tambem da para mandar `/start` para o bot e cadastrar o chat enquanto o worker estiver rodando.
 
 ## Variaveis no Railway
@@ -20,6 +22,9 @@ SCHEDULE_START_DATE=2026-06-01
 TIMEZONE=America/Sao_Paulo
 SEND_HOUR=9
 SEND_MINUTE=40
+ENGLISH_SCHEDULE_FILE=Guia Completo_ Frases do Cotidiano Americano.md
+ENGLISH_SEND_HOUR=19
+ENGLISH_SEND_MINUTE=0
 ENABLE_POLLING=false
 SEND_TEST_ON_START=false
 ```
@@ -45,6 +50,7 @@ Crie um `.env` baseado em `.env.example` e rode:
 ```bash
 pip install -r requirements.txt
 python bot.py --dry-run 2026-06-01
+python bot.py --english-dry-run 2026-06-01
 python bot.py
 ```
 

@@ -22,12 +22,15 @@ from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_SCHEDULE_FILE = ROOT_DIR / "cronograma_ti_20_semanas_detalhado.md"
+DEFAULT_ENGLISH_SCHEDULE_FILE = ROOT_DIR / "Guia Completo_ Frases do Cotidiano Americano.md"
 LOCAL_TOKEN_FILE = ROOT_DIR / "token telegram.txt"
 SUBSCRIBERS_FILE = ROOT_DIR / "subscribers.json"
 
+TITLE_RE = re.compile(r"^#\s+(?!#)(.+?)\s*$")
 MODULE_RE = re.compile(r"^##\s+(?!#)(.+?)\s*$")
 WEEK_RE = re.compile(r"^###\s+Semana\s+(\d+)\b\s*(?:[-\u2013]\s*)?(.*)$")
 LESSON_RE = re.compile(r"^####\s+([^:]+):\s*(.+?)\s*$")
+WEEKDAY_SECTION_RE = re.compile(r"^##\s+([^:]+):\s*(.+?)\s*$")
 
 WEEKDAY_NAMES = {
     0: "Segunda-feira",
@@ -120,6 +123,14 @@ def schedule_path() -> Path:
     return path if path.is_absolute() else ROOT_DIR / path
 
 
+def english_schedule_path() -> Path:
+    configured = os.getenv("ENGLISH_SCHEDULE_FILE", "").strip()
+    if not configured:
+        return DEFAULT_ENGLISH_SCHEDULE_FILE
+    path = Path(configured)
+    return path if path.is_absolute() else ROOT_DIR / path
+
+
 def parse_schedule(path: Path) -> list[Lesson]:
     if not path.exists():
         raise ConfigError(f"Cronograma nao encontrado: {path}")
@@ -192,6 +203,63 @@ def parse_schedule(path: Path) -> list[Lesson]:
     return lessons
 
 
+def parse_weekday_schedule(path: Path) -> dict[int, Lesson]:
+    if not path.exists():
+        raise ConfigError(f"Cronograma de ingles nao encontrado: {path}")
+
+    lessons: dict[int, Lesson] = {}
+    document_title = path.stem
+    current_lesson: dict[str, object] | None = None
+    current_body: list[str] = []
+
+    def flush_lesson() -> None:
+        nonlocal current_lesson, current_body
+        if not current_lesson:
+            return
+
+        lesson = Lesson(
+            module=str(current_lesson["module"]),
+            week=1,
+            week_title="Ciclo semanal",
+            weekday=int(current_lesson["weekday"]),
+            weekday_name=str(current_lesson["weekday_name"]),
+            title=str(current_lesson["title"]),
+            body="\n".join(current_body).strip(),
+        )
+        lessons[lesson.weekday] = lesson
+        current_lesson = None
+        current_body = []
+
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        title_match = TITLE_RE.match(raw_line)
+        if title_match:
+            document_title = title_match.group(1)
+            continue
+
+        section_match = WEEKDAY_SECTION_RE.match(raw_line)
+        if section_match:
+            day_key = normalize_text(section_match.group(1))
+            weekday = WEEKDAY_KEYS.get(day_key)
+            if weekday is not None:
+                flush_lesson()
+                current_lesson = {
+                    "module": document_title,
+                    "weekday": weekday,
+                    "weekday_name": WEEKDAY_NAMES[weekday],
+                    "title": section_match.group(2).strip(),
+                }
+                continue
+
+            flush_lesson()
+            continue
+
+        if current_lesson:
+            current_body.append(raw_line)
+
+    flush_lesson()
+    return lessons
+
+
 def lesson_for_date(lessons: list[Lesson], start_date: date, target_date: date) -> Lesson | None:
     if target_date < start_date or target_date.weekday() > 4:
         return None
@@ -204,6 +272,12 @@ def lesson_for_date(lessons: list[Lesson], start_date: date, target_date: date) 
     return lessons[lesson_index]
 
 
+def weekday_lesson_for_date(lessons: dict[int, Lesson], target_date: date) -> Lesson | None:
+    if target_date.weekday() > 4:
+        return None
+    return lessons.get(target_date.weekday())
+
+
 def format_lesson(lesson: Lesson, target_date: date) -> str:
     header = "\n".join(
         [
@@ -211,6 +285,25 @@ def format_lesson(lesson: Lesson, target_date: date) -> str:
             f"Data: {target_date:%d/%m/%Y}",
             f"Modulo: {lesson.module}",
             f"Semana {lesson.week}: {lesson.week_title}",
+            f"Dia: {lesson.weekday_name}",
+            f"Tema: {lesson.title}",
+            "",
+            "Conteudo:",
+        ]
+    )
+
+    if not lesson.body:
+        return header
+
+    return f"{header}\n{lesson.body}"
+
+
+def format_english_lesson(lesson: Lesson, target_date: date) -> str:
+    header = "\n".join(
+        [
+            "Ingles de hoje",
+            f"Data: {target_date:%d/%m/%Y}",
+            f"Guia: {lesson.module}",
             f"Dia: {lesson.weekday_name}",
             f"Tema: {lesson.title}",
             "",
@@ -338,6 +431,34 @@ def send_lesson_to_subscribers(token: str, lessons: list[Lesson], start_date: da
             logging.info("Aula enviada para chat_id=%s.", chat_id)
 
 
+def send_weekday_lesson_to_subscribers(
+    token: str,
+    lessons: dict[int, Lesson],
+    target_date: date,
+) -> None:
+    lesson = weekday_lesson_for_date(lessons, target_date)
+    if not lesson:
+        logging.info("Nenhuma aula de ingles programada para %s.", target_date.isoformat())
+        return
+
+    subscribers = load_subscribers()
+    if not subscribers:
+        logging.warning("Nenhum TELEGRAM_CHAT_IDS configurado para envio de ingles.")
+        return
+
+    chunks = split_message(format_english_lesson(lesson, target_date))
+    for chat_id in subscribers:
+        for chunk in chunks:
+            try:
+                send_telegram_message(token, chat_id, chunk)
+            except (requests.RequestException, TelegramApiError) as exc:
+                logging.error("Falha ao enviar ingles para chat_id=%s: %s", chat_id, exc)
+                break
+            time.sleep(0.4)
+        else:
+            logging.info("Aula de ingles enviada para chat_id=%s.", chat_id)
+
+
 def reply(token: str, chat_id: str, text: str) -> None:
     try:
         send_telegram_message(token, chat_id, text)
@@ -436,6 +557,29 @@ def build_scheduler(
     return scheduler
 
 
+def add_english_scheduler_job(
+    scheduler: BlockingScheduler,
+    token: str,
+    lessons: dict[int, Lesson],
+    timezone: ZoneInfo,
+    hour: int,
+    minute: int,
+) -> None:
+    trigger = CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute, timezone=timezone)
+    scheduler.add_job(
+        lambda: send_weekday_lesson_to_subscribers(
+            token=token,
+            lessons=lessons,
+            target_date=datetime.now(timezone).date(),
+        ),
+        trigger=trigger,
+        id="daily_english_lesson",
+        replace_existing=True,
+        misfire_grace_time=900,
+        coalesce=True,
+    )
+
+
 def dry_run(target_date: date) -> int:
     load_dotenv()
     lessons = parse_schedule(schedule_path())
@@ -446,6 +590,18 @@ def dry_run(target_date: date) -> int:
         return 0
 
     print(format_lesson(lesson, target_date))
+    return 0
+
+
+def english_dry_run(target_date: date) -> int:
+    load_dotenv()
+    lessons = parse_weekday_schedule(english_schedule_path())
+    lesson = weekday_lesson_for_date(lessons, target_date)
+    if not lesson:
+        print(f"Nenhuma aula de ingles para {target_date.isoformat()}.")
+        return 0
+
+    print(format_english_lesson(lesson, target_date))
     return 0
 
 
@@ -461,14 +617,19 @@ def main() -> int:
     timezone = ZoneInfo(os.getenv("TIMEZONE", "America/Sao_Paulo"))
     hour = int(os.getenv("SEND_HOUR", "9"))
     minute = int(os.getenv("SEND_MINUTE", "40"))
+    english_hour = int(os.getenv("ENGLISH_SEND_HOUR", "19"))
+    english_minute = int(os.getenv("ENGLISH_SEND_MINUTE", "0"))
     enable_polling = parse_bool(os.getenv("ENABLE_POLLING", "false"))
     send_test_on_start = parse_bool(os.getenv("SEND_TEST_ON_START", "false"))
     token = read_token()
     start_date = read_start_date()
     lessons = parse_schedule(schedule_path())
+    english_lessons = parse_weekday_schedule(english_schedule_path())
 
     if not lessons:
         raise ConfigError("Nenhuma aula encontrada no cronograma.")
+    if len(english_lessons) < 5:
+        raise ConfigError("O cronograma de ingles precisa ter conteudo de segunda a sexta.")
 
     if enable_polling:
         polling_thread = threading.Thread(
@@ -498,11 +659,19 @@ def main() -> int:
             logging.warning("SEND_TEST_ON_START ativo, mas nenhum TELEGRAM_CHAT_IDS foi configurado.")
 
     scheduler = build_scheduler(token, lessons, start_date, timezone, hour, minute)
+    add_english_scheduler_job(scheduler, token, english_lessons, timezone, english_hour, english_minute)
     logging.info(
         "Bot iniciado com %s aulas. Disparo: seg-sex %02d:%02d (%s).",
         len(lessons),
         hour,
         minute,
+        timezone.key,
+    )
+    logging.info(
+        "Cronograma de ingles iniciado com %s aulas. Disparo: seg-sex %02d:%02d (%s).",
+        len(english_lessons),
+        english_hour,
+        english_minute,
         timezone.key,
     )
     scheduler.start()
@@ -512,9 +681,12 @@ def main() -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Bot Telegram do cronograma de estudos.")
     parser.add_argument("--dry-run", metavar="YYYY-MM-DD", help="Mostra a aula calculada para a data.")
+    parser.add_argument("--english-dry-run", metavar="YYYY-MM-DD", help="Mostra a aula de ingles para a data.")
     args = parser.parse_args()
 
     try:
+        if args.english_dry_run:
+            raise SystemExit(english_dry_run(parse_date(args.english_dry_run)))
         if args.dry_run:
             raise SystemExit(dry_run(parse_date(args.dry_run)))
         raise SystemExit(main())
