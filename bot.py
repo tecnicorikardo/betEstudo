@@ -12,7 +12,6 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterable
 from zoneinfo import ZoneInfo
 
 import requests
@@ -65,6 +64,17 @@ class Lesson:
 
 class ConfigError(RuntimeError):
     pass
+
+
+class TelegramApiError(RuntimeError):
+    pass
+
+
+def parse_bool(value: str, default: bool = False) -> bool:
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    return normalized in {"1", "true", "yes", "y", "sim", "s", "on"}
 
 
 def normalize_text(value: str) -> str:
@@ -244,6 +254,20 @@ def telegram_api_url(token: str, method: str) -> str:
     return f"https://api.telegram.org/bot{token}/{method}"
 
 
+def raise_for_telegram(response: requests.Response, action: str) -> None:
+    if response.ok:
+        return
+
+    description = response.text
+    try:
+        payload = response.json()
+        description = payload.get("description", description)
+    except ValueError:
+        pass
+
+    raise TelegramApiError(f"{action} falhou: HTTP {response.status_code} - {description}")
+
+
 def send_telegram_message(token: str, chat_id: str, text: str) -> None:
     response = requests.post(
         telegram_api_url(token, "sendMessage"),
@@ -254,7 +278,7 @@ def send_telegram_message(token: str, chat_id: str, text: str) -> None:
         },
         timeout=30,
     )
-    response.raise_for_status()
+    raise_for_telegram(response, "sendMessage")
 
 
 def load_subscribers() -> set[str]:
@@ -312,8 +336,8 @@ def send_lesson_to_subscribers(token: str, lessons: list[Lesson], start_date: da
 def reply(token: str, chat_id: str, text: str) -> None:
     try:
         send_telegram_message(token, chat_id, text)
-    except requests.RequestException:
-        logging.exception("Falha ao responder chat_id=%s.", chat_id)
+    except (requests.RequestException, TelegramApiError) as exc:
+        logging.error("Falha ao responder chat_id=%s: %s", chat_id, exc)
 
 
 def polling_loop(token: str, lessons: list[Lesson], start_date: date, timezone: ZoneInfo) -> None:
@@ -327,10 +351,14 @@ def polling_loop(token: str, lessons: list[Lesson], start_date: date, timezone: 
                 params={"timeout": 30, "offset": offset},
                 timeout=40,
             )
-            response.raise_for_status()
+            raise_for_telegram(response, "getUpdates")
             updates = response.json().get("result", [])
-        except requests.RequestException:
-            logging.exception("Falha ao consultar getUpdates.")
+        except TelegramApiError as exc:
+            logging.error("Falha ao consultar getUpdates: %s", exc)
+            time.sleep(10)
+            continue
+        except requests.RequestException as exc:
+            logging.error("Falha de rede ao consultar getUpdates: %s", exc.__class__.__name__)
             time.sleep(10)
             continue
 
@@ -426,6 +454,7 @@ def main() -> int:
     timezone = ZoneInfo(os.getenv("TIMEZONE", "America/Sao_Paulo"))
     hour = int(os.getenv("SEND_HOUR", "9"))
     minute = int(os.getenv("SEND_MINUTE", "40"))
+    enable_polling = parse_bool(os.getenv("ENABLE_POLLING", "false"))
     token = read_token()
     start_date = read_start_date()
     lessons = parse_schedule(schedule_path())
@@ -433,12 +462,15 @@ def main() -> int:
     if not lessons:
         raise ConfigError("Nenhuma aula encontrada no cronograma.")
 
-    polling_thread = threading.Thread(
-        target=polling_loop,
-        args=(token, lessons, start_date, timezone),
-        daemon=True,
-    )
-    polling_thread.start()
+    if enable_polling:
+        polling_thread = threading.Thread(
+            target=polling_loop,
+            args=(token, lessons, start_date, timezone),
+            daemon=True,
+        )
+        polling_thread.start()
+    else:
+        logging.info("Polling do Telegram desativado. Use ENABLE_POLLING=true para comandos como /id.")
 
     scheduler = build_scheduler(token, lessons, start_date, timezone, hour, minute)
     logging.info(

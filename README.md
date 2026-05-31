@@ -20,6 +20,7 @@ SCHEDULE_START_DATE=2026-06-01
 TIMEZONE=America/Sao_Paulo
 SEND_HOUR=9
 SEND_MINUTE=40
+ENABLE_POLLING=false
 ```
 
 O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`.
@@ -31,6 +32,8 @@ O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`
 - `/hoje`: envia a aula calculada para hoje.
 - `/amanha`: envia a aula calculada para amanha.
 - `/cronograma`: mostra a quantidade de aulas carregadas e a data inicial.
+
+Para usar esses comandos no Railway, configure `ENABLE_POLLING=true` temporariamente. Para o envio diario, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.
 
 ## Teste local
 
