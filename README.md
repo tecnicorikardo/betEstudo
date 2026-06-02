@@ -6,11 +6,13 @@ Worker em Python para enviar a materia do cronograma todos os dias uteis as 09:4
 
 - O bot le `cronograma_ti_20_semanas_detalhado.md`.
 - O bot tambem le `Guia Completo_ Frases do Cotidiano Americano.md`.
+- O bot tambem le `gramatica.md` para aulas curtas de gramatica inglesa.
 - Quando configurado, o bot le um arquivo com resumos biblicos do Novo Testamento.
 - A data `SCHEDULE_START_DATE` define quando comeca a Semana 1, Segunda-feira.
 - De segunda a sexta, as 09:40 no fuso `America/Sao_Paulo`, ele envia a aula correspondente ao dia.
 - Todos os dias, as 14:00, ele envia um resumo biblico por capitulo.
 - De segunda a sexta, as 19:00, ele envia o conteudo de ingles do dia.
+- O conteudo de gramatica fica disponivel pelo comando `/gramatica`; o envio automatico pode ser ligado com `GRAMMAR_ENABLED=true`.
 - Se `GROQ_API_KEY` estiver configurada, a Groq organiza o resumo biblico em uma mensagem diaria para Telegram.
 - O envio usa `TELEGRAM_CHAT_IDS`. Tambem da para mandar `/start` para o bot e cadastrar o chat enquanto o worker estiver rodando.
 
@@ -28,6 +30,10 @@ SEND_MINUTE=40
 ENGLISH_SCHEDULE_FILE=Guia Completo_ Frases do Cotidiano Americano.md
 ENGLISH_SEND_HOUR=19
 ENGLISH_SEND_MINUTE=0
+GRAMMAR_SCHEDULE_FILE=gramatica.md
+GRAMMAR_ENABLED=false
+GRAMMAR_SEND_HOUR=18
+GRAMMAR_SEND_MINUTE=0
 BIBLE_ENABLED=true
 BIBLE_SCHEDULE_FILE=resumo_novo_testamento.md
 BIBLE_SCHEDULE_URL=https://raw.githubusercontent.com/tecnicorikardo/betEstudo/main/resumo_novo_testamento.md
@@ -49,6 +55,7 @@ O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`
 - `/hoje`: envia a aula calculada para hoje.
 - `/amanha`: envia a aula calculada para amanha.
 - `/ingles`: envia o conteudo de ingles de hoje.
+- `/gramatica`: envia a aula de gramatica inglesa de hoje.
 - `/biblia`: envia o resumo biblico de hoje, usando Groq quando configurada.
 - `/ia sua pergunta`: responde usando a Groq.
 - `/cronograma`: mostra a quantidade de aulas carregadas e a data inicial.
@@ -67,6 +74,7 @@ Crie um `.env` baseado em `.env.example` e rode:
 pip install -r requirements.txt
 python bot.py --dry-run 2026-06-01
 python bot.py --english-dry-run 2026-06-01
+python bot.py --grammar-dry-run 2026-06-01
 python bot.py --bible-dry-run 2026-06-01
 python bot.py
 ```

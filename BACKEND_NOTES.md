@@ -16,6 +16,7 @@ Documento operacional do projeto BetEstudo. Nao salvar tokens, senhas ou API key
 - TI: segunda a sexta, `09:40`, arquivo `cronograma_ti_20_semanas_detalhado.md`.
 - Biblia: todos os dias, `14:00`, arquivo `resumo_novo_testamento.md`.
 - Ingles: segunda a sexta, `19:00`, arquivo `Guia Completo_ Frases do Cotidiano Americano.md`.
+- Gramatica: disponivel por comando `/gramatica`, arquivo `gramatica.md`; envio automatico opcional.
 
 ## Variaveis Railway
 
@@ -30,6 +31,10 @@ SEND_HOUR=9
 SEND_MINUTE=40
 ENGLISH_SEND_HOUR=19
 ENGLISH_SEND_MINUTE=0
+GRAMMAR_SCHEDULE_FILE=gramatica.md
+GRAMMAR_ENABLED=false
+GRAMMAR_SEND_HOUR=18
+GRAMMAR_SEND_MINUTE=0
 BIBLE_ENABLED=true
 BIBLE_SCHEDULE_FILE=resumo_novo_testamento.md
 BIBLE_SCHEDULE_URL=https://raw.githubusercontent.com/tecnicorikardo/betEstudo/main/resumo_novo_testamento.md
@@ -57,6 +62,7 @@ LOG_LEVEL=INFO
 - `/hoje`: envia a aula de TI de hoje.
 - `/amanha`: envia a aula de TI de amanha.
 - `/ingles`: envia o conteudo de ingles de hoje.
+- `/gramatica`: envia a aula de gramatica inglesa de hoje.
 - `/biblia`: envia o resumo biblico de hoje usando Groq quando disponivel.
 - `/ia sua pergunta`: responde usando Groq.
 - `/cronograma`: mostra status do cronograma de TI.

@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_SCHEDULE_FILE = ROOT_DIR / "cronograma_ti_20_semanas_detalhado.md"
 DEFAULT_ENGLISH_SCHEDULE_FILE = ROOT_DIR / "Guia Completo_ Frases do Cotidiano Americano.md"
+DEFAULT_GRAMMAR_SCHEDULE_FILE = ROOT_DIR / "gramatica.md"
 DEFAULT_BIBLE_SCHEDULE_FILE = ROOT_DIR / "resumo_novo_testamento.md"
 DEFAULT_BIBLE_SCHEDULE_URL = (
     "https://raw.githubusercontent.com/tecnicorikardo/betEstudo/main/resumo_novo_testamento.md"
@@ -34,7 +35,10 @@ TITLE_RE = re.compile(r"^#\s+(?!#)(.+?)\s*$")
 MODULE_RE = re.compile(r"^##\s+(?!#)(.+?)\s*$")
 WEEK_RE = re.compile(r"^###\s+Semana\s+(\d+)\b\s*(?:[-\u2013]\s*)?(.*)$")
 LESSON_RE = re.compile(r"^####\s+([^:]+):\s*(.+?)\s*$")
-WEEKDAY_SECTION_RE = re.compile(r"^##\s+([^:]+):\s*(.+?)\s*$")
+WEEKDAY_SECTION_RE = re.compile(
+    r"^#{2,6}\s+(?:[^\wÀ-ÿ]+)?\**(?P<day>segunda-feira|terca-feira|terça-feira|quarta-feira|quinta-feira|sexta-feira)\**\s*(?::|[-\u2013])\s*\**(?P<title>.+?)\**\s*$",
+    re.IGNORECASE,
+)
 BIBLE_CHAPTER_RE = re.compile(
     r"^(?:resumo\s+(?:de\s+)?)?(?P<title>[1-3]?\s*[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*\s*(?:[-\u2013:]\s*)?(?:cap[ií]tulo\s*)?\d+)\b.*$",
     re.IGNORECASE,
@@ -92,6 +96,14 @@ def parse_bool(value: str, default: bool = False) -> bool:
     return normalized in {"1", "true", "yes", "y", "sim", "s", "on"}
 
 
+def configure_stdout() -> None:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
+
+
 def normalize_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value.strip().lower())
     return "".join(char for char in normalized if not unicodedata.combining(char))
@@ -139,6 +151,14 @@ def english_schedule_path() -> Path:
     configured = os.getenv("ENGLISH_SCHEDULE_FILE", "").strip()
     if not configured:
         return DEFAULT_ENGLISH_SCHEDULE_FILE
+    path = Path(configured)
+    return path if path.is_absolute() else ROOT_DIR / path
+
+
+def grammar_schedule_path() -> Path:
+    configured = os.getenv("GRAMMAR_SCHEDULE_FILE", "").strip()
+    if not configured:
+        return DEFAULT_GRAMMAR_SCHEDULE_FILE
     path = Path(configured)
     return path if path.is_absolute() else ROOT_DIR / path
 
@@ -389,7 +409,7 @@ def parse_weekday_schedule(path: Path) -> dict[int, Lesson]:
 
         section_match = WEEKDAY_SECTION_RE.match(raw_line)
         if section_match:
-            day_key = normalize_text(section_match.group(1))
+            day_key = normalize_text(section_match.group("day"))
             weekday = WEEKDAY_KEYS.get(day_key)
             if weekday is not None:
                 flush_lesson()
@@ -397,7 +417,7 @@ def parse_weekday_schedule(path: Path) -> dict[int, Lesson]:
                     "module": document_title,
                     "weekday": weekday,
                     "weekday_name": WEEKDAY_NAMES[weekday],
-                    "title": section_match.group(2).strip(),
+                    "title": section_match.group("title").strip().strip("*"),
                 }
                 continue
 
@@ -483,6 +503,25 @@ def format_english_lesson(lesson: Lesson, target_date: date) -> str:
     header = "\n".join(
         [
             "Ingles de hoje",
+            f"Data: {target_date:%d/%m/%Y}",
+            f"Guia: {lesson.module}",
+            f"Dia: {lesson.weekday_name}",
+            f"Tema: {lesson.title}",
+            "",
+            "Conteudo:",
+        ]
+    )
+
+    if not lesson.body:
+        return header
+
+    return f"{header}\n{lesson.body}"
+
+
+def format_grammar_lesson(lesson: Lesson, target_date: date) -> str:
+    header = "\n".join(
+        [
+            "Gramatica de ingles de hoje",
             f"Data: {target_date:%d/%m/%Y}",
             f"Guia: {lesson.module}",
             f"Dia: {lesson.weekday_name}",
@@ -737,6 +776,34 @@ def send_weekday_lesson_to_subscribers(
             logging.info("Aula de ingles enviada para chat_id=%s.", chat_id)
 
 
+def send_grammar_lesson_to_subscribers(
+    token: str,
+    lessons: dict[int, Lesson],
+    target_date: date,
+) -> None:
+    lesson = weekday_lesson_for_date(lessons, target_date)
+    if not lesson:
+        logging.info("Nenhuma aula de gramatica programada para %s.", target_date.isoformat())
+        return
+
+    subscribers = load_subscribers()
+    if not subscribers:
+        logging.warning("Nenhum TELEGRAM_CHAT_IDS configurado para envio de gramatica.")
+        return
+
+    chunks = split_message(format_grammar_lesson(lesson, target_date))
+    for chat_id in subscribers:
+        for chunk in chunks:
+            try:
+                send_telegram_message(token, chat_id, chunk)
+            except (requests.RequestException, TelegramApiError) as exc:
+                logging.error("Falha ao enviar gramatica para chat_id=%s: %s", chat_id, exc)
+                break
+            time.sleep(0.4)
+        else:
+            logging.info("Aula de gramatica enviada para chat_id=%s.", chat_id)
+
+
 def send_bible_lesson_to_subscribers(
     token: str,
     lessons: list[Lesson],
@@ -784,6 +851,7 @@ def polling_loop(
     lessons: list[Lesson],
     start_date: date,
     english_lessons: dict[int, Lesson],
+    grammar_lessons: dict[int, Lesson],
     bible_lessons: list[Lesson],
     bible_start_date: date,
     timezone: ZoneInfo,
@@ -826,14 +894,14 @@ def polling_loop(
                     chat_id,
                     (
                         "Cadastro feito. Este chat recebera os cronogramas diarios.\n\n"
-                        "Comandos: /id, /hoje, /ingles, /biblia, /ia sua pergunta, /cronograma."
+                        "Comandos: /id, /hoje, /ingles, /gramatica, /biblia, /ia sua pergunta, /cronograma."
                     ),
                 )
             elif text.startswith("/ajuda") or text.startswith("/help"):
                 reply(
                     token,
                     chat_id,
-                    "Comandos: /id, /hoje, /amanha, /ingles, /biblia, /ia sua pergunta, /cronograma.",
+                    "Comandos: /id, /hoje, /amanha, /ingles, /gramatica, /biblia, /ia sua pergunta, /cronograma.",
                 )
             elif text.startswith("/id"):
                 reply(token, chat_id, f"Seu chat_id e: {chat_id}")
@@ -861,6 +929,14 @@ def polling_loop(
                         reply(token, chat_id, chunk)
                 else:
                     reply(token, chat_id, "Nao ha aula de ingles programada para hoje.")
+            elif text.startswith("/gramatica"):
+                today = datetime.now(timezone).date()
+                lesson = weekday_lesson_for_date(grammar_lessons, today)
+                if lesson:
+                    for chunk in split_message(format_grammar_lesson(lesson, today)):
+                        reply(token, chat_id, chunk)
+                else:
+                    reply(token, chat_id, "Nao ha aula de gramatica programada para hoje.")
             elif text.startswith("/biblia"):
                 today = datetime.now(timezone).date()
                 lesson = sequential_lesson_for_date(bible_lessons, bible_start_date, today)
@@ -949,6 +1025,29 @@ def add_english_scheduler_job(
     )
 
 
+def add_grammar_scheduler_job(
+    scheduler: BlockingScheduler,
+    token: str,
+    lessons: dict[int, Lesson],
+    timezone: ZoneInfo,
+    hour: int,
+    minute: int,
+) -> None:
+    trigger = CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute, timezone=timezone)
+    scheduler.add_job(
+        lambda: send_grammar_lesson_to_subscribers(
+            token=token,
+            lessons=lessons,
+            target_date=datetime.now(timezone).date(),
+        ),
+        trigger=trigger,
+        id="daily_grammar_lesson",
+        replace_existing=True,
+        misfire_grace_time=900,
+        coalesce=True,
+    )
+
+
 def add_bible_scheduler_job(
     scheduler: BlockingScheduler,
     token: str,
@@ -999,6 +1098,18 @@ def english_dry_run(target_date: date) -> int:
     return 0
 
 
+def grammar_dry_run(target_date: date) -> int:
+    load_dotenv()
+    lessons = parse_weekday_schedule(grammar_schedule_path())
+    lesson = weekday_lesson_for_date(lessons, target_date)
+    if not lesson:
+        print(f"Nenhuma aula de gramatica para {target_date.isoformat()}.")
+        return 0
+
+    print(format_grammar_lesson(lesson, target_date))
+    return 0
+
+
 def bible_dry_run(target_date: date) -> int:
     load_dotenv()
     lessons = parse_bible_schedule(bible_schedule_path())
@@ -1026,6 +1137,9 @@ def main() -> int:
     minute = int(os.getenv("SEND_MINUTE", "40"))
     english_hour = int(os.getenv("ENGLISH_SEND_HOUR", "19"))
     english_minute = int(os.getenv("ENGLISH_SEND_MINUTE", "0"))
+    grammar_hour = int(os.getenv("GRAMMAR_SEND_HOUR", "18"))
+    grammar_minute = int(os.getenv("GRAMMAR_SEND_MINUTE", "0"))
+    grammar_enabled = parse_bool(os.getenv("GRAMMAR_ENABLED", "false"))
     bible_hour = int(os.getenv("BIBLE_SEND_HOUR", "14"))
     bible_minute = int(os.getenv("BIBLE_SEND_MINUTE", "0"))
     enable_polling = parse_bool(os.getenv("ENABLE_POLLING", "false"))
@@ -1034,6 +1148,7 @@ def main() -> int:
     start_date = read_start_date()
     lessons = parse_schedule(schedule_path())
     english_lessons = parse_weekday_schedule(english_schedule_path())
+    grammar_lessons = parse_weekday_schedule(grammar_schedule_path())
     bible_path = bible_schedule_path()
     bible_enabled = parse_bool(os.getenv("BIBLE_ENABLED", ""), default=bible_path.exists())
     bible_lessons: list[Lesson] = []
@@ -1043,6 +1158,8 @@ def main() -> int:
         raise ConfigError("Nenhuma aula encontrada no cronograma.")
     if len(english_lessons) < 5:
         raise ConfigError("O cronograma de ingles precisa ter conteudo de segunda a sexta.")
+    if len(grammar_lessons) < 5:
+        raise ConfigError("O cronograma de gramatica precisa ter conteudo de segunda a sexta.")
     if bible_enabled:
         bible_lessons = parse_bible_schedule(bible_path)
         if not bible_lessons:
@@ -1051,7 +1168,7 @@ def main() -> int:
     if enable_polling:
         polling_thread = threading.Thread(
             target=polling_loop,
-            args=(token, lessons, start_date, english_lessons, bible_lessons, bible_start_date, timezone),
+            args=(token, lessons, start_date, english_lessons, grammar_lessons, bible_lessons, bible_start_date, timezone),
             daemon=True,
         )
         polling_thread.start()
@@ -1077,6 +1194,8 @@ def main() -> int:
 
     scheduler = build_scheduler(token, lessons, start_date, timezone, hour, minute)
     add_english_scheduler_job(scheduler, token, english_lessons, timezone, english_hour, english_minute)
+    if grammar_enabled:
+        add_grammar_scheduler_job(scheduler, token, grammar_lessons, timezone, grammar_hour, grammar_minute)
     if bible_enabled:
         add_bible_scheduler_job(
             scheduler,
@@ -1101,6 +1220,16 @@ def main() -> int:
         english_minute,
         timezone.key,
     )
+    if grammar_enabled:
+        logging.info(
+            "Cronograma de gramatica iniciado com %s aulas. Disparo: seg-sex %02d:%02d (%s).",
+            len(grammar_lessons),
+            grammar_hour,
+            grammar_minute,
+            timezone.key,
+        )
+    else:
+        logging.info("Cronograma de gramatica carregado com %s aulas. Envio automatico desativado.", len(grammar_lessons))
     if bible_enabled:
         logging.info(
             "Cronograma biblico iniciado com %s capitulos. Disparo: diario %02d:%02d (%s).",
@@ -1116,15 +1245,19 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    configure_stdout()
     parser = argparse.ArgumentParser(description="Bot Telegram do cronograma de estudos.")
     parser.add_argument("--dry-run", metavar="YYYY-MM-DD", help="Mostra a aula calculada para a data.")
     parser.add_argument("--english-dry-run", metavar="YYYY-MM-DD", help="Mostra a aula de ingles para a data.")
+    parser.add_argument("--grammar-dry-run", metavar="YYYY-MM-DD", help="Mostra a aula de gramatica para a data.")
     parser.add_argument("--bible-dry-run", metavar="YYYY-MM-DD", help="Mostra o resumo biblico para a data.")
     args = parser.parse_args()
 
     try:
         if args.bible_dry_run:
             raise SystemExit(bible_dry_run(parse_date(args.bible_dry_run)))
+        if args.grammar_dry_run:
+            raise SystemExit(grammar_dry_run(parse_date(args.grammar_dry_run)))
         if args.english_dry_run:
             raise SystemExit(english_dry_run(parse_date(args.english_dry_run)))
         if args.dry_run:
