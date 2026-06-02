@@ -86,7 +86,9 @@ class TelegramApiError(RuntimeError):
 
 
 class GroqApiError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def parse_bool(value: str, default: bool = False) -> bool:
@@ -629,7 +631,7 @@ def enhance_bible_summary_with_groq(lesson: Lesson) -> str:
             description = payload.get("error", {}).get("message", description)
         except ValueError:
             pass
-        raise GroqApiError(f"Groq falhou: HTTP {response.status_code} - {description}")
+        raise GroqApiError(f"Groq falhou: HTTP {response.status_code} - {description}", response.status_code)
 
     payload = response.json()
     return payload["choices"][0]["message"]["content"].strip()
@@ -672,10 +674,28 @@ def ask_groq(question: str) -> str:
             description = payload.get("error", {}).get("message", description)
         except ValueError:
             pass
-        raise GroqApiError(f"Groq falhou: HTTP {response.status_code} - {description}")
+        raise GroqApiError(f"Groq falhou: HTTP {response.status_code} - {description}", response.status_code)
 
     payload = response.json()
     return payload["choices"][0]["message"]["content"].strip()
+
+
+def groq_error_message(exc: Exception) -> str:
+    if isinstance(exc, GroqApiError):
+        message = str(exc).lower()
+        if "nao configurada" in message:
+            return "A IA nao esta configurada no Railway. Confira se existe a variavel GROQ_API_KEY com a chave real da Groq."
+        if exc.status_code in {401, 403}:
+            return "A Groq recusou a chave configurada. Confira se a GROQ_API_KEY esta correta, ativa e sem espacos ou aspas."
+        if exc.status_code == 404 or "model" in message:
+            return "A Groq recusou o modelo configurado. Confira a variavel GROQ_MODEL no Railway."
+        if exc.status_code == 429:
+            return "A Groq bloqueou por limite de uso ou muitas requisicoes. Tente novamente em alguns minutos."
+        if exc.status_code and exc.status_code >= 500:
+            return "A Groq esta instavel agora. Tente novamente em alguns minutos."
+    if isinstance(exc, requests.RequestException):
+        return "Nao consegui conectar na Groq agora. Tente novamente em alguns minutos."
+    return "Nao consegui responder com a IA agora. Confira as variaveis da Groq no Railway."
 
 
 def send_telegram_message(token: str, chat_id: str, text: str) -> None:
@@ -894,14 +914,14 @@ def polling_loop(
                     chat_id,
                     (
                         "Cadastro feito. Este chat recebera os cronogramas diarios.\n\n"
-                        "Comandos: /id, /hoje, /ingles, /gramatica, /biblia, /ia sua pergunta, /cronograma."
+                        "Comandos: /id, /hoje, /ingles, /gramatica, /biblia, /ia sua pergunta, /ia_status, /cronograma."
                     ),
                 )
             elif text.startswith("/ajuda") or text.startswith("/help"):
                 reply(
                     token,
                     chat_id,
-                    "Comandos: /id, /hoje, /amanha, /ingles, /gramatica, /biblia, /ia sua pergunta, /cronograma.",
+                    "Comandos: /id, /hoje, /amanha, /ingles, /gramatica, /biblia, /ia sua pergunta, /ia_status, /cronograma.",
                 )
             elif text.startswith("/id"):
                 reply(token, chat_id, f"Seu chat_id e: {chat_id}")
@@ -952,6 +972,11 @@ def polling_loop(
 
                 for chunk in split_message(format_bible_lesson(lesson, today, body)):
                     reply(token, chat_id, chunk)
+            elif text.startswith("/ia_status"):
+                if groq_api_key():
+                    reply(token, chat_id, f"Groq configurada. Modelo atual: {os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')}.")
+                else:
+                    reply(token, chat_id, "Groq nao configurada. Adicione GROQ_API_KEY nas variaveis do Railway.")
             elif text.startswith("/ia"):
                 question = text_raw[3:].strip()
                 if not question:
@@ -962,7 +987,7 @@ def polling_loop(
                     answer = ask_groq(question)
                 except (requests.RequestException, GroqApiError, KeyError, IndexError) as exc:
                     logging.error("Falha ao responder /ia: %s", exc)
-                    reply(token, chat_id, "Nao consegui responder com a IA agora. Verifique a GROQ_API_KEY.")
+                    reply(token, chat_id, groq_error_message(exc))
                     continue
 
                 for chunk in split_message(answer):

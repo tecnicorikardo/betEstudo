@@ -65,6 +65,7 @@ LOG_LEVEL=INFO
 - `/gramatica`: envia a aula de gramatica inglesa de hoje.
 - `/biblia`: envia o resumo biblico de hoje usando Groq quando disponivel.
 - `/ia sua pergunta`: responde usando Groq.
+- `/ia_status`: mostra se a Groq foi configurada no ambiente.
 - `/cronograma`: mostra status do cronograma de TI.
 - `/ajuda`: lista comandos.
 

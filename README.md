@@ -58,6 +58,7 @@ O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`
 - `/gramatica`: envia a aula de gramatica inglesa de hoje.
 - `/biblia`: envia o resumo biblico de hoje, usando Groq quando configurada.
 - `/ia sua pergunta`: responde usando a Groq.
+- `/ia_status`: mostra se a Groq foi configurada no ambiente.
 - `/cronograma`: mostra a quantidade de aulas carregadas e a data inicial.
 
 Para usar esses comandos no Railway, configure `ENABLE_POLLING=true`. Para apenas envio diario sem respostas no chat, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.
