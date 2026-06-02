@@ -13,7 +13,7 @@ Worker em Python para enviar a materia do cronograma todos os dias uteis as 09:4
 - Todos os dias, as 14:00, ele envia um resumo biblico por capitulo.
 - De segunda a sexta, as 19:00, ele envia o conteudo de ingles do dia.
 - O conteudo de gramatica fica disponivel pelo comando `/gramatica`; o envio automatico pode ser ligado com `GRAMMAR_ENABLED=true`.
-- Se `GROQ_API_KEY` estiver configurada, a Groq organiza o resumo biblico em uma mensagem diaria para Telegram.
+- Se `DEEP_API_KEY` estiver configurada, a DeepSeek responde a IA e organiza o resumo biblico. Se nao houver DeepSeek, o bot usa Groq quando `GROQ_API_KEY` existir.
 - O envio usa `TELEGRAM_CHAT_IDS`. Tambem da para mandar `/start` para o bot e cadastrar o chat enquanto o worker estiver rodando.
 
 ## Variaveis no Railway
@@ -42,6 +42,10 @@ BIBLE_SEND_HOUR=14
 BIBLE_SEND_MINUTE=0
 GROQ_API_KEY=sua_api_key_da_groq
 GROQ_MODEL=llama-3.1-8b-instant
+DEEP_API_KEY=sua_api_key_da_deepseek
+DEEP_MODEL=deepseek-v4-flash
+DEEP_BASE_URL=https://api.deepseek.com
+DEEP_THINKING=disabled
 ENABLE_POLLING=false
 SEND_TEST_ON_START=false
 ```
@@ -56,9 +60,9 @@ O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`
 - `/amanha`: envia a aula calculada para amanha.
 - `/ingles`: envia o conteudo de ingles de hoje.
 - `/gramatica`: envia a aula de gramatica inglesa de hoje.
-- `/biblia`: envia o resumo biblico de hoje, usando Groq quando configurada.
-- `/ia sua pergunta`: responde usando a Groq.
-- `/ia_status`: mostra se a Groq foi configurada no ambiente.
+- `/biblia`: envia o resumo biblico de hoje, usando DeepSeek ou Groq quando configurada.
+- `/ia sua pergunta`: responde usando DeepSeek ou Groq.
+- `/ia_status`: mostra qual IA foi configurada no ambiente.
 - `/cronograma`: mostra a quantidade de aulas carregadas e a data inicial.
 
 Para usar esses comandos no Railway, configure `ENABLE_POLLING=true`. Para apenas envio diario sem respostas no chat, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.

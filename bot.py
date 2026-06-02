@@ -91,6 +91,12 @@ class GroqApiError(RuntimeError):
         self.status_code = status_code
 
 
+class DeepSeekApiError(RuntimeError):
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def parse_bool(value: str, default: bool = False) -> bool:
     normalized = value.strip().lower()
     if not normalized:
@@ -587,39 +593,36 @@ def groq_api_key() -> str:
     return os.getenv("GROQ_API_KEY", "").strip()
 
 
-def enhance_bible_summary_with_groq(lesson: Lesson) -> str:
-    api_key = groq_api_key()
-    if not api_key:
-        return lesson.body
+def deep_api_key() -> str:
+    return os.getenv("DEEP_API_KEY", os.getenv("DEEPSEEK_API_KEY", "")).strip()
 
-    prompt = (
-        "Transforme o resumo abaixo em uma mensagem diaria para Telegram, em portugues do Brasil. "
-        "Seja claro, respeitoso e fiel ao conteudo biblico. Organize em: 1) resumo do capitulo, "
-        "2) mensagem principal, 3) aplicacao pratica para hoje. Nao invente versiculos nem fatos "
-        "que nao estejam no texto. Mantenha entre 120 e 220 palavras.\n\n"
-        f"Capitulo: {lesson.title}\n\n"
-        f"Resumo base:\n{lesson.body}"
-    )
+
+def active_ai_provider() -> str | None:
+    if deep_api_key():
+        return "deepseek"
+    if groq_api_key():
+        return "groq"
+    return None
+
+
+def deepseek_chat_completion(messages: list[dict[str, str]]) -> str:
+    api_key = deep_api_key()
+    if not api_key:
+        raise DeepSeekApiError("DEEP_API_KEY nao configurada.")
+
+    base_url = os.getenv("DEEP_BASE_URL", "https://api.deepseek.com").rstrip("/")
     response = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
+        f"{base_url}/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
         json={
-            "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Voce e um assistente de estudos biblicos. Responda com linguagem simples, "
-                        "devocional leve e foco em compreensao do Novo Testamento."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": float(os.getenv("GROQ_TEMPERATURE", "0.4")),
-            "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", "700")),
+            "model": os.getenv("DEEP_MODEL", "deepseek-v4-flash"),
+            "messages": messages,
+            "thinking": {"type": os.getenv("DEEP_THINKING", "disabled")},
+            "temperature": float(os.getenv("DEEP_TEMPERATURE", os.getenv("GROQ_TEMPERATURE", "0.4"))),
+            "max_tokens": int(os.getenv("DEEP_MAX_TOKENS", os.getenv("GROQ_MAX_TOKENS", "700"))),
         },
         timeout=60,
     )
@@ -631,13 +634,13 @@ def enhance_bible_summary_with_groq(lesson: Lesson) -> str:
             description = payload.get("error", {}).get("message", description)
         except ValueError:
             pass
-        raise GroqApiError(f"Groq falhou: HTTP {response.status_code} - {description}", response.status_code)
+        raise DeepSeekApiError(f"DeepSeek falhou: HTTP {response.status_code} - {description}", response.status_code)
 
     payload = response.json()
     return payload["choices"][0]["message"]["content"].strip()
 
 
-def ask_groq(question: str) -> str:
+def groq_chat_completion(messages: list[dict[str, str]]) -> str:
     api_key = groq_api_key()
     if not api_key:
         raise GroqApiError("GROQ_API_KEY nao configurada.")
@@ -650,17 +653,7 @@ def ask_groq(question: str) -> str:
         },
         json={
             "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Voce e o assistente do bot BetEstudo. Responda em portugues do Brasil, "
-                        "com clareza, objetividade e tom respeitoso. Ajude em estudos de TI, ingles "
-                        "e resumos biblicos quando solicitado."
-                    ),
-                },
-                {"role": "user", "content": question},
-            ],
+            "messages": messages,
             "temperature": float(os.getenv("GROQ_TEMPERATURE", "0.4")),
             "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", "700")),
         },
@@ -680,7 +673,72 @@ def ask_groq(question: str) -> str:
     return payload["choices"][0]["message"]["content"].strip()
 
 
-def groq_error_message(exc: Exception) -> str:
+def ai_chat_completion(messages: list[dict[str, str]]) -> str:
+    provider = active_ai_provider()
+    if provider == "deepseek":
+        return deepseek_chat_completion(messages)
+    if provider == "groq":
+        return groq_chat_completion(messages)
+    raise DeepSeekApiError("Nenhuma IA configurada. Configure DEEP_API_KEY ou GROQ_API_KEY.")
+
+
+def enhance_bible_summary_with_ai(lesson: Lesson) -> str:
+    if not active_ai_provider():
+        return lesson.body
+
+    prompt = (
+        "Transforme o resumo abaixo em uma mensagem diaria para Telegram, em portugues do Brasil. "
+        "Seja claro, respeitoso e fiel ao conteudo biblico. Organize em: 1) resumo do capitulo, "
+        "2) mensagem principal, 3) aplicacao pratica para hoje. Nao invente versiculos nem fatos "
+        "que nao estejam no texto. Mantenha entre 120 e 220 palavras.\n\n"
+        f"Capitulo: {lesson.title}\n\n"
+        f"Resumo base:\n{lesson.body}"
+    )
+    return ai_chat_completion(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "Voce e um assistente de estudos biblicos. Responda com linguagem simples, "
+                    "devocional leve e foco em compreensao do Novo Testamento."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+    )
+
+
+def ask_ai(question: str) -> str:
+    return ai_chat_completion(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "Voce e o assistente do bot BetEstudo. Responda em portugues do Brasil, "
+                    "com clareza, objetividade e tom respeitoso. Ajude em estudos de TI, ingles "
+                    "e resumos biblicos quando solicitado."
+                ),
+            },
+            {"role": "user", "content": question},
+        ]
+    )
+
+
+def ai_error_message(exc: Exception) -> str:
+    if isinstance(exc, DeepSeekApiError):
+        message = str(exc).lower()
+        if "nenhuma ia configurada" in message:
+            return "A IA nao esta configurada no Railway. Configure DEEP_API_KEY ou GROQ_API_KEY."
+        if "nao configurada" in message:
+            return "A DeepSeek nao esta configurada no Railway. Confira se existe a variavel DEEP_API_KEY com a chave real."
+        if exc.status_code in {401, 403}:
+            return "A DeepSeek recusou a chave configurada. Confira se a DEEP_API_KEY esta correta, ativa e sem espacos ou aspas."
+        if exc.status_code == 404 or "model" in message:
+            return "A DeepSeek recusou o modelo configurado. Confira a variavel DEEP_MODEL no Railway."
+        if exc.status_code == 429:
+            return "A DeepSeek bloqueou por limite de uso ou muitas requisicoes. Tente novamente em alguns minutos."
+        if exc.status_code and exc.status_code >= 500:
+            return "A DeepSeek esta instavel agora. Tente novamente em alguns minutos."
     if isinstance(exc, GroqApiError):
         message = str(exc).lower()
         if "nao configurada" in message:
@@ -694,8 +752,8 @@ def groq_error_message(exc: Exception) -> str:
         if exc.status_code and exc.status_code >= 500:
             return "A Groq esta instavel agora. Tente novamente em alguns minutos."
     if isinstance(exc, requests.RequestException):
-        return "Nao consegui conectar na Groq agora. Tente novamente em alguns minutos."
-    return "Nao consegui responder com a IA agora. Confira as variaveis da Groq no Railway."
+        return "Nao consegui conectar na IA agora. Tente novamente em alguns minutos."
+    return "Nao consegui responder com a IA agora. Confira as variaveis DEEP_API_KEY ou GROQ_API_KEY no Railway."
 
 
 def send_telegram_message(token: str, chat_id: str, text: str) -> None:
@@ -841,9 +899,9 @@ def send_bible_lesson_to_subscribers(
         return
 
     try:
-        body = enhance_bible_summary_with_groq(lesson)
-    except (requests.RequestException, GroqApiError, KeyError, IndexError) as exc:
-        logging.error("Falha ao usar Groq para %s: %s. Enviando resumo original.", lesson.title, exc)
+        body = enhance_bible_summary_with_ai(lesson)
+    except (requests.RequestException, DeepSeekApiError, GroqApiError, KeyError, IndexError) as exc:
+        logging.error("Falha ao usar IA para %s: %s. Enviando resumo original.", lesson.title, exc)
         body = lesson.body
 
     chunks = split_message(format_bible_lesson(lesson, target_date, body))
@@ -965,18 +1023,21 @@ def polling_loop(
                     continue
 
                 try:
-                    body = enhance_bible_summary_with_groq(lesson)
-                except (requests.RequestException, GroqApiError, KeyError, IndexError) as exc:
-                    logging.error("Falha ao usar Groq no comando /biblia: %s", exc)
+                    body = enhance_bible_summary_with_ai(lesson)
+                except (requests.RequestException, DeepSeekApiError, GroqApiError, KeyError, IndexError) as exc:
+                    logging.error("Falha ao usar IA no comando /biblia: %s", exc)
                     body = lesson.body
 
                 for chunk in split_message(format_bible_lesson(lesson, today, body)):
                     reply(token, chat_id, chunk)
             elif text.startswith("/ia_status"):
-                if groq_api_key():
+                provider = active_ai_provider()
+                if provider == "deepseek":
+                    reply(token, chat_id, f"DeepSeek configurada. Modelo atual: {os.getenv('DEEP_MODEL', 'deepseek-v4-flash')}.")
+                elif provider == "groq":
                     reply(token, chat_id, f"Groq configurada. Modelo atual: {os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')}.")
                 else:
-                    reply(token, chat_id, "Groq nao configurada. Adicione GROQ_API_KEY nas variaveis do Railway.")
+                    reply(token, chat_id, "IA nao configurada. Adicione DEEP_API_KEY ou GROQ_API_KEY nas variaveis do Railway.")
             elif text.startswith("/ia"):
                 question = text_raw[3:].strip()
                 if not question:
@@ -984,10 +1045,10 @@ def polling_loop(
                     continue
 
                 try:
-                    answer = ask_groq(question)
-                except (requests.RequestException, GroqApiError, KeyError, IndexError) as exc:
+                    answer = ask_ai(question)
+                except (requests.RequestException, DeepSeekApiError, GroqApiError, KeyError, IndexError) as exc:
                     logging.error("Falha ao responder /ia: %s", exc)
-                    reply(token, chat_id, groq_error_message(exc))
+                    reply(token, chat_id, ai_error_message(exc))
                     continue
 
                 for chunk in split_message(answer):

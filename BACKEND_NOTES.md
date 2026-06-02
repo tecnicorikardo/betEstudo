@@ -6,6 +6,7 @@ Documento operacional do projeto BetEstudo. Nao salvar tokens, senhas ou API key
 
 - Railway: `martinsantosric@gmail.com`
 - Groq: `martinsantosric@gmail.com`
+- DeepSeek: usar chave em `DEEP_API_KEY`
 - GitHub: `tecnicorikardo`
 - Repositorio: `https://github.com/tecnicorikardo/betEstudo`
 - Bot Telegram: `@BetEstudoBot`
@@ -43,6 +44,10 @@ BIBLE_SEND_HOUR=14
 BIBLE_SEND_MINUTE=0
 GROQ_API_KEY=
 GROQ_MODEL=llama-3.1-8b-instant
+DEEP_API_KEY=
+DEEP_MODEL=deepseek-v4-flash
+DEEP_BASE_URL=https://api.deepseek.com
+DEEP_THINKING=disabled
 ENABLE_POLLING=true
 SEND_TEST_ON_START=false
 ```
@@ -52,6 +57,8 @@ Opcionais:
 ```env
 GROQ_TEMPERATURE=0.4
 GROQ_MAX_TOKENS=700
+DEEP_TEMPERATURE=0.4
+DEEP_MAX_TOKENS=700
 LOG_LEVEL=INFO
 ```
 
@@ -63,9 +70,9 @@ LOG_LEVEL=INFO
 - `/amanha`: envia a aula de TI de amanha.
 - `/ingles`: envia o conteudo de ingles de hoje.
 - `/gramatica`: envia a aula de gramatica inglesa de hoje.
-- `/biblia`: envia o resumo biblico de hoje usando Groq quando disponivel.
-- `/ia sua pergunta`: responde usando Groq.
-- `/ia_status`: mostra se a Groq foi configurada no ambiente.
+- `/biblia`: envia o resumo biblico de hoje usando DeepSeek ou Groq quando disponivel.
+- `/ia sua pergunta`: responde usando DeepSeek ou Groq.
+- `/ia_status`: mostra qual IA foi configurada no ambiente.
 - `/cronograma`: mostra status do cronograma de TI.
 - `/ajuda`: lista comandos.
 
