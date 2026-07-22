@@ -18,6 +18,7 @@ Backend ativo: Cloudflare Workers.
 - Bot Telegram: `@BetEstudoBot`
 - Chat privado principal: `5449614637`
 - IA principal: DeepSeek via secret `DEEP_API_KEY`
+- Conta DeepSeek: `rikardomartinssantos@gmail.com`
 - IA fallback/opcional: Groq via secret `GROQ_API_KEY`
 
 O Telegram esta ligado ao Worker por webhook:
