@@ -16,9 +16,9 @@ Worker em Python para enviar a materia do cronograma todos os dias uteis as 09:4
 - Se `DEEP_API_KEY` estiver configurada, a DeepSeek responde a IA e organiza o resumo biblico. Se nao houver DeepSeek, o bot usa Groq quando `GROQ_API_KEY` existir.
 - O envio usa `TELEGRAM_CHAT_IDS`. Tambem da para mandar `/start` para o bot e cadastrar o chat enquanto o worker estiver rodando.
 
-## Variaveis no Render
+## Variaveis no Railway
 
-Configure estas variaveis em `Environment` no Render:
+Configure estas variaveis em `Environment` no Railway:
 
 ```env
 TELEGRAM_BOT_TOKEN=seu_token_do_bot
@@ -65,7 +65,7 @@ O arquivo `token telegram.txt` fica apenas para uso local e esta no `.gitignore`
 - `/ia_status`: mostra qual IA foi configurada no ambiente.
 - `/cronograma`: mostra a quantidade de aulas carregadas e a data inicial.
 
-Para usar esses comandos no Render, configure `ENABLE_POLLING=true`. Para apenas envio diario sem respostas no chat, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.
+Para usar esses comandos no Railway, configure `ENABLE_POLLING=true`. Para apenas envio diario sem respostas no chat, deixe `ENABLE_POLLING=false` e use `TELEGRAM_CHAT_IDS`.
 
 Para testar o envio sem esperar o horario agendado, configure `SEND_TEST_ON_START=true`, faca redeploy e depois volte para `false`.
 
@@ -84,7 +84,7 @@ python bot.py --bible-dry-run 2026-06-01
 python bot.py
 ```
 
-No Render, configure o servico como worker/background job usando:
+No Railway, configure o servico como worker/background job usando:
 
 ```bash
 python bot.py

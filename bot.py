@@ -728,13 +728,13 @@ def ai_error_message(exc: Exception) -> str:
     if isinstance(exc, DeepSeekApiError):
         message = str(exc).lower()
         if "nenhuma ia configurada" in message:
-            return "A IA nao esta configurada no Render. Configure DEEP_API_KEY ou GROQ_API_KEY."
+            return "A IA nao esta configurada no Railway. Configure DEEP_API_KEY ou GROQ_API_KEY."
         if "nao configurada" in message:
-            return "A DeepSeek nao esta configurada no Render. Confira se existe a variavel DEEP_API_KEY com a chave real."
+            return "A DeepSeek nao esta configurada no Railway. Confira se existe a variavel DEEP_API_KEY com a chave real."
         if exc.status_code in {401, 403}:
             return "A DeepSeek recusou a chave configurada. Confira se a DEEP_API_KEY esta correta, ativa e sem espacos ou aspas."
         if exc.status_code == 404 or "model" in message:
-            return "A DeepSeek recusou o modelo configurado. Confira a variavel DEEP_MODEL no Render."
+            return "A DeepSeek recusou o modelo configurado. Confira a variavel DEEP_MODEL no Railway."
         if exc.status_code == 429:
             return "A DeepSeek bloqueou por limite de uso ou muitas requisicoes. Tente novamente em alguns minutos."
         if exc.status_code and exc.status_code >= 500:
@@ -742,18 +742,18 @@ def ai_error_message(exc: Exception) -> str:
     if isinstance(exc, GroqApiError):
         message = str(exc).lower()
         if "nao configurada" in message:
-            return "A IA nao esta configurada no Render. Confira se existe a variavel GROQ_API_KEY com a chave real da Groq."
+            return "A IA nao esta configurada no Railway. Confira se existe a variavel GROQ_API_KEY com a chave real da Groq."
         if exc.status_code in {401, 403}:
             return "A Groq recusou a chave configurada. Confira se a GROQ_API_KEY esta correta, ativa e sem espacos ou aspas."
         if exc.status_code == 404 or "model" in message:
-            return "A Groq recusou o modelo configurado. Confira a variavel GROQ_MODEL no Render."
+            return "A Groq recusou o modelo configurado. Confira a variavel GROQ_MODEL no Railway."
         if exc.status_code == 429:
             return "A Groq bloqueou por limite de uso ou muitas requisicoes. Tente novamente em alguns minutos."
         if exc.status_code and exc.status_code >= 500:
             return "A Groq esta instavel agora. Tente novamente em alguns minutos."
     if isinstance(exc, requests.RequestException):
         return "Nao consegui conectar na IA agora. Tente novamente em alguns minutos."
-    return "Nao consegui responder com a IA agora. Confira as variaveis DEEP_API_KEY ou GROQ_API_KEY no Render."
+    return "Nao consegui responder com a IA agora. Confira as variaveis DEEP_API_KEY ou GROQ_API_KEY no Railway."
 
 
 def send_telegram_message(token: str, chat_id: str, text: str) -> None:
@@ -1037,7 +1037,7 @@ def polling_loop(
                 elif provider == "groq":
                     reply(token, chat_id, f"Groq configurada. Modelo atual: {os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')}.")
                 else:
-                    reply(token, chat_id, "IA nao configurada. Adicione DEEP_API_KEY ou GROQ_API_KEY nas variaveis do Render.")
+                    reply(token, chat_id, "IA nao configurada. Adicione DEEP_API_KEY ou GROQ_API_KEY nas variaveis do Railway.")
             elif text.startswith("/ia"):
                 question = text_raw[3:].strip()
                 if not question:

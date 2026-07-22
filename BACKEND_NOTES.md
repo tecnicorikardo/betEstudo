@@ -4,7 +4,7 @@ Documento operacional do projeto BetEstudo. Nao salvar tokens, senhas ou API key
 
 ## Contas e acessos
 
-- Render: `martinsantosric@gmail.com`
+- Railway: `martinsantosric@gmail.com`
 - Groq: `martinsantosric@gmail.com`
 - DeepSeek: usar chave em `DEEP_API_KEY`
 - GitHub: `tecnicorikardo`
@@ -19,7 +19,7 @@ Documento operacional do projeto BetEstudo. Nao salvar tokens, senhas ou API key
 - Ingles: segunda a sexta, `19:00`, arquivo `Guia Completo_ Frases do Cotidiano Americano.md`.
 - Gramatica: disponivel por comando `/gramatica`, arquivo `gramatica.md`; envio automatico opcional.
 
-## Variaveis Render
+## Variaveis Railway
 
 Obrigatorias:
 
@@ -81,14 +81,14 @@ LOG_LEVEL=INFO
 - Nunca commitar `.env`, `token telegram.txt`, `subscribers.json`, tokens ou API keys reais.
 - Depois de testar com `SEND_TEST_ON_START=true`, voltar para `false`.
 - Manter apenas uma instancia do bot usando `ENABLE_POLLING=true`; mais de uma instancia pode gerar conflito `409 Conflict` no Telegram.
-- Se o Render nao encontrar `resumo_novo_testamento.md`, o bot usa `BIBLE_SCHEDULE_URL` como fallback.
+- Se o Railway nao encontrar `resumo_novo_testamento.md`, o bot usa `BIBLE_SCHEDULE_URL` como fallback.
 - Push para GitHub deve ser feito manualmente pelo usuario.
 
-## Deploy Render
+## Deploy Railway
 
 1. Fazer commit local das alteracoes.
 2. Fazer push manual para `main`.
-3. No Render, usar deploy manual/latest commit se o deploy automatico nao iniciar.
+3. No Railway, usar deploy manual/latest commit se o deploy automatico nao iniciar.
 4. Conferir logs esperados:
 
 ```text
