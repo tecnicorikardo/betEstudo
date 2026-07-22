@@ -1,0 +1,25 @@
+name = "betestudo"
+main = "src/worker.js"
+compatibility_date = "2026-07-22"
+
+[vars]
+TELEGRAM_CHAT_IDS = "5449614637"
+SCHEDULE_START_DATE = "2026-06-01"
+BIBLE_START_DATE = "2026-06-01"
+TIMEZONE = "America/Sao_Paulo"
+RAW_BASE_URL = "https://raw.githubusercontent.com/tecnicorikardo/betEstudo/main/"
+SCHEDULE_FILE = "cronograma_ti_20_semanas_detalhado.md"
+ENGLISH_SCHEDULE_FILE = "Guia Completo_ Frases do Cotidiano Americano.md"
+GRAMMAR_SCHEDULE_FILE = "gramatica.md"
+BIBLE_SCHEDULE_FILE = "resumo_novo_testamento.md"
+DEEP_MODEL = "deepseek-v4-flash"
+DEEP_BASE_URL = "https://api.deepseek.com"
+DEEP_THINKING = "disabled"
+GROQ_MODEL = "llama-3.1-8b-instant"
+
+[triggers]
+crons = [
+  "40 12 * * 1-5",
+  "0 17 * * *",
+  "0 22 * * 1-5"
+]

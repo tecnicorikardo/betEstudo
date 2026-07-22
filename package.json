@@ -1,0 +1,15 @@
+{
+  "name": "betestudo-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/worker-parsers.test.js",
+    "deploy:cf": "wrangler deploy",
+    "dev:cf": "wrangler dev",
+    "tail:cf": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.27.0"
+  }
+}

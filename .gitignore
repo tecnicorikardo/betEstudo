@@ -4,3 +4,6 @@ subscribers.json
 __pycache__/
 *.py[cod]
 .pytest_cache/
+node_modules/
+.wrangler/
+.dev.vars

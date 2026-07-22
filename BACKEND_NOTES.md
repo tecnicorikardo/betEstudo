@@ -5,6 +5,7 @@ Documento operacional do projeto BetEstudo. Nao salvar tokens, senhas ou API key
 ## Contas e acessos
 
 - Railway: `martinsantosric@gmail.com`
+- Cloudflare Workers: conta logada via GitHub `tecnicorikardo`
 - Groq: `martinsantosric@gmail.com`
 - DeepSeek: usar chave em `DEEP_API_KEY`
 - GitHub: `tecnicorikardo`
@@ -79,6 +80,7 @@ LOG_LEVEL=INFO
 ## Cuidados
 
 - Nunca commitar `.env`, `token telegram.txt`, `subscribers.json`, tokens ou API keys reais.
+- No Cloudflare, salvar `TELEGRAM_BOT_TOKEN`, `DEEP_API_KEY`, `GROQ_API_KEY` e `TELEGRAM_WEBHOOK_SECRET` como secrets.
 - Depois de testar com `SEND_TEST_ON_START=true`, voltar para `false`.
 - Manter apenas uma instancia do bot usando `ENABLE_POLLING=true`; mais de uma instancia pode gerar conflito `409 Conflict` no Telegram.
 - Se o Railway nao encontrar `resumo_novo_testamento.md`, o bot usa `BIBLE_SCHEDULE_URL` como fallback.
@@ -97,3 +99,22 @@ Cronograma biblico iniciado com 260 capitulos. Disparo: diario 14:00 (America/Sa
 Cronograma de ingles iniciado com 5 aulas. Disparo: seg-sex 19:00 (America/Sao_Paulo).
 Scheduler started
 ```
+
+## Deploy Cloudflare Workers
+
+Deploy recomendado quando nao houver worker/container pago ativo.
+
+1. Instalar dependencias: `npm install`.
+2. Testar parsers: `npm test`.
+3. Fazer login: `npx wrangler login`.
+4. Criar secrets:
+
+```bash
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put DEEP_API_KEY
+npx wrangler secret put GROQ_API_KEY
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+```
+
+5. Publicar: `npx wrangler deploy`.
+6. Configurar o webhook do Telegram para `https://betestudo.<subdomain>.workers.dev/telegram` ou `/telegram/<secret>`.

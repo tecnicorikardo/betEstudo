@@ -1,6 +1,8 @@
 # Bot Telegram do cronograma de estudos
 
-Worker em Python para enviar a materia do cronograma todos os dias uteis as 09:40.
+Bot Telegram para enviar a materia do cronograma todos os dias uteis as 09:40.
+
+O deploy recomendado agora e Cloudflare Workers. A versao antiga em Python continua no repositorio como fallback para Railway ou outro worker com processo 24/7.
 
 ## Como funciona
 
@@ -15,6 +17,21 @@ Worker em Python para enviar a materia do cronograma todos os dias uteis as 09:4
 - O conteudo de gramatica fica disponivel pelo comando `/gramatica`; o envio automatico pode ser ligado com `GRAMMAR_ENABLED=true`.
 - Se `DEEP_API_KEY` estiver configurada, a DeepSeek responde a IA e organiza o resumo biblico. Se nao houver DeepSeek, o bot usa Groq quando `GROQ_API_KEY` existir.
 - O envio usa `TELEGRAM_CHAT_IDS`. Tambem da para mandar `/start` para o bot e cadastrar o chat enquanto o worker estiver rodando.
+
+## Deploy Cloudflare Workers
+
+Veja o passo a passo em `CLOUDFLARE_WORKERS.md`.
+
+Resumo:
+
+```bash
+npm install
+npm test
+npx wrangler login
+npx wrangler deploy
+```
+
+Depois do deploy, configure o webhook do Telegram apontando para a URL do Worker.
 
 ## Variaveis no Railway
 
