@@ -2,7 +2,7 @@
 
 Bot Telegram para enviar a materia do cronograma todos os dias uteis as 09:40.
 
-O deploy recomendado agora e Cloudflare Workers. A versao antiga em Python continua no repositorio como fallback para Railway ou outro worker com processo 24/7.
+O backend ativo agora e Cloudflare Workers em `https://betestudo.betestudo.workers.dev`. A versao antiga em Python continua no repositorio como fallback para Railway ou outro worker com processo 24/7.
 
 ## Como funciona
 
@@ -21,6 +21,8 @@ O deploy recomendado agora e Cloudflare Workers. A versao antiga em Python conti
 ## Deploy Cloudflare Workers
 
 Veja o passo a passo em `CLOUDFLARE_WORKERS.md`.
+
+As contas, ferramentas atuais e historico de hospedagem ficam documentados em `BACKEND_NOTES.md`.
 
 Resumo:
 

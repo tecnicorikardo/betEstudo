@@ -2,27 +2,102 @@
 
 Documento operacional do projeto BetEstudo. Nao salvar tokens, senhas ou API keys reais neste arquivo.
 
-## Contas e acessos
+Ultima revisao: `2026-07-22`.
 
-- Railway: `martinsantosric@gmail.com`
-- Cloudflare Workers: conta logada via GitHub `tecnicorikardo`
-- Groq: `martinsantosric@gmail.com`
-- DeepSeek: usar chave em `DEEP_API_KEY`
-- GitHub: `tecnicorikardo`
-- Repositorio: `https://github.com/tecnicorikardo/betEstudo`
+## Estado atual
+
+Backend ativo: Cloudflare Workers.
+
+- Worker: `betestudo`
+- URL publica: `https://betestudo.betestudo.workers.dev`
+- Conta Cloudflare: login via GitHub `tecnicorikardo`
+- Email mostrado pelo Wrangler: `tecnicorikardo@gmail.com`
+- Account ID Cloudflare: `a748550556d8b4bfd8c0635578773242`
+- Repositorio GitHub: `https://github.com/tecnicorikardo/betEstudo`
+- Branch usada em producao: `main`
 - Bot Telegram: `@BetEstudoBot`
 - Chat privado principal: `5449614637`
+- IA principal: DeepSeek via secret `DEEP_API_KEY`
+- IA fallback/opcional: Groq via secret `GROQ_API_KEY`
+
+O Telegram esta ligado ao Worker por webhook:
+
+```text
+https://betestudo.betestudo.workers.dev/telegram
+```
+
+## O que esta em uso
+
+- Cloudflare Workers: hospeda o bot e executa os horarios automaticos.
+- Cloudflare Cron Triggers: dispara os envios automaticos.
+- Telegram Bot API: recebe comandos por webhook e envia mensagens.
+- GitHub raw: fornece os arquivos Markdown de conteudo.
+- DeepSeek API: responde `/ia` e melhora o resumo biblico quando configurada.
+- Node.js/Wrangler: ferramenta de deploy do Worker.
+
+## O que ja foi usado ou investigado
+
+- Railway: foi usado como backend Python, mas o trial expirou e o servico ficou offline.
+- Render: foi investigado por API, mas nao era o backend em uso do bot.
+- Groq: foi configurado/investigado como IA. Atualmente fica como fallback caso `GROQ_API_KEY` exista.
+- Python `bot.py`: continua no repositorio como fallback para Railway/outro worker 24/7, mas nao e o backend ativo.
 
 ## Rotina de envios
 
 - TI: segunda a sexta, `09:40`, arquivo `cronograma_ti_20_semanas_detalhado.md`.
 - Biblia: todos os dias, `14:00`, arquivo `resumo_novo_testamento.md`.
 - Ingles: segunda a sexta, `19:00`, arquivo `Guia Completo_ Frases do Cotidiano Americano.md`.
-- Gramatica: disponivel por comando `/gramatica`, arquivo `gramatica.md`; envio automatico opcional.
+- Gramatica: disponivel por comando `/gramatica`, arquivo `gramatica.md`.
 
-## Variaveis Railway
+No Cloudflare, os horarios estao em UTC no arquivo `wrangler.toml`:
 
-Obrigatorias:
+```text
+40 12 * * 1-5 = TI, segunda a sexta, 09:40 em Sao Paulo
+0 17 * * *    = Biblia, todos os dias, 14:00 em Sao Paulo
+0 22 * * 1-5  = Ingles, segunda a sexta, 19:00 em Sao Paulo
+```
+
+## Secrets atuais no Cloudflare
+
+Esses nomes devem existir no Worker. Os valores reais nao devem ser documentados.
+
+Obrigatorios:
+
+```env
+TELEGRAM_BOT_TOKEN=
+DEEP_API_KEY=
+```
+
+Opcionais:
+
+```env
+GROQ_API_KEY=
+TELEGRAM_WEBHOOK_SECRET=
+```
+
+## Variaveis atuais no Cloudflare
+
+Configuradas em `wrangler.toml`:
+
+```env
+TELEGRAM_CHAT_IDS=5449614637
+SCHEDULE_START_DATE=2026-06-01
+BIBLE_START_DATE=2026-06-01
+TIMEZONE=America/Sao_Paulo
+RAW_BASE_URL=https://raw.githubusercontent.com/tecnicorikardo/betEstudo/main/
+SCHEDULE_FILE=cronograma_ti_20_semanas_detalhado.md
+ENGLISH_SCHEDULE_FILE=Guia Completo_ Frases do Cotidiano Americano.md
+GRAMMAR_SCHEDULE_FILE=gramatica.md
+BIBLE_SCHEDULE_FILE=resumo_novo_testamento.md
+DEEP_MODEL=deepseek-v4-flash
+DEEP_BASE_URL=https://api.deepseek.com
+DEEP_THINKING=disabled
+GROQ_MODEL=llama-3.1-8b-instant
+```
+
+## Variaveis Railway antigas
+
+Mantidas apenas para referencia da versao Python antiga.
 
 ```env
 TELEGRAM_BOT_TOKEN=
@@ -82,27 +157,14 @@ LOG_LEVEL=INFO
 - Nunca commitar `.env`, `token telegram.txt`, `subscribers.json`, tokens ou API keys reais.
 - No Cloudflare, salvar `TELEGRAM_BOT_TOKEN`, `DEEP_API_KEY`, `GROQ_API_KEY` e `TELEGRAM_WEBHOOK_SECRET` como secrets.
 - Depois de testar com `SEND_TEST_ON_START=true`, voltar para `false`.
-- Manter apenas uma instancia do bot usando `ENABLE_POLLING=true`; mais de uma instancia pode gerar conflito `409 Conflict` no Telegram.
+- Manter apenas um webhook ativo do Telegram para este bot.
+- Na versao Python antiga, manter apenas uma instancia com `ENABLE_POLLING=true`; mais de uma instancia pode gerar conflito `409 Conflict` no Telegram.
 - Se o Railway nao encontrar `resumo_novo_testamento.md`, o bot usa `BIBLE_SCHEDULE_URL` como fallback.
 - Push para GitHub deve ser feito manualmente pelo usuario.
 
-## Deploy Railway
-
-1. Fazer commit local das alteracoes.
-2. Fazer push manual para `main`.
-3. No Railway, usar deploy manual/latest commit se o deploy automatico nao iniciar.
-4. Conferir logs esperados:
-
-```text
-Bot iniciado com 100 aulas. Disparo: seg-sex 09:40 (America/Sao_Paulo).
-Cronograma biblico iniciado com 260 capitulos. Disparo: diario 14:00 (America/Sao_Paulo).
-Cronograma de ingles iniciado com 5 aulas. Disparo: seg-sex 19:00 (America/Sao_Paulo).
-Scheduler started
-```
-
 ## Deploy Cloudflare Workers
 
-Deploy recomendado quando nao houver worker/container pago ativo.
+Deploy recomendado e ativo.
 
 1. Instalar dependencias: `npm install`.
 2. Testar parsers: `npm test`.
@@ -117,4 +179,23 @@ npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 ```
 
 5. Publicar: `npx wrangler deploy`.
-6. Configurar o webhook do Telegram para `https://betestudo.<subdomain>.workers.dev/telegram` ou `/telegram/<secret>`.
+6. Configurar o webhook do Telegram:
+
+```bash
+TOKEN="$(cat 'token telegram.txt' | tr -d '\r\n')"
+curl -s "https://api.telegram.org/bot$TOKEN/setWebhook?url=https://betestudo.betestudo.workers.dev/telegram"
+```
+
+## Deploy Railway antigo
+
+1. Fazer commit local das alteracoes.
+2. Fazer push manual para `main`.
+3. No Railway, usar deploy manual/latest commit se o deploy automatico nao iniciar.
+4. Conferir logs esperados:
+
+```text
+Bot iniciado com 100 aulas. Disparo: seg-sex 09:40 (America/Sao_Paulo).
+Cronograma biblico iniciado com 260 capitulos. Disparo: diario 14:00 (America/Sao_Paulo).
+Cronograma de ingles iniciado com 5 aulas. Disparo: seg-sex 19:00 (America/Sao_Paulo).
+Scheduler started
+```
